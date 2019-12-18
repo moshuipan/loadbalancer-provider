@@ -124,7 +124,7 @@ build-linux:
 	        $(CMD_DIR)/$${target};                                                     \
 	    done'
 
-container: build-linux
+container: build-local
 	@for target in $(TARGETS); do                                                      \
 	  image=$(IMAGE_PREFIX)$${target}$(IMAGE_SUFFIX);                                  \
 	  docker build -t $(REGISTRY)/$${image}:$(VERSION)                                 \
