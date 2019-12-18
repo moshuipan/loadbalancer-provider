@@ -29,7 +29,8 @@
 ROOT := github.com/caicloud/loadbalancer-provider
 
 # Target binaries. You can build multiple binaries for a single project.
-TARGETS := ingress ipvsdr azure
+#TARGETS := ingress ipvsdr azure
+TARGETS := ipvsdr
 
 # Container image prefix and suffix added to targets.
 # The final built images are:
@@ -39,7 +40,8 @@ IMAGE_PREFIX ?= $(strip loadbalancer-provider-)
 IMAGE_SUFFIX ?= $(strip )
 
 # Container registries.
-REGISTRY ?= cargo.dev.caicloud.xyz/release
+#REGISTRY ?= cargo.dev.caicloud.xyz/release
+REGISTRY := network.cargo.caicloud.io/release
 
 # Container registry for base images.
 BASE_REGISTRY ?= cargo.caicloud.xyz/library
