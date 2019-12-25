@@ -483,7 +483,7 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 		return nil
 	}
 
-	// p.cfgMD5 = md5
+	p.cfgMD5 = md5
 	err = p.keepalived.Reload()
 	if err != nil {
 		log.Error("reload keepalived error", log.Fields{"err": err})
