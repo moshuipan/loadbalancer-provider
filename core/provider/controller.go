@@ -18,7 +18,6 @@ package provider
 
 import (
 	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/caicloud/clientset/informers"
@@ -78,6 +77,7 @@ func NewLoadBalancerProvider(cfg *Configuration) *GenericProvider {
 	secretinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
 
 	gp.cfg.Backend.SetListers(StoreLister{
+		KubeClient:   gp.cfg.KubeClient,
 		Node:         nodeinformer.Lister(),
 		LoadBalancer: lbinformer.Lister(),
 		ConfigMap:    cminformer.Lister(),
@@ -154,6 +154,7 @@ func (p *GenericProvider) addLoadBalancer(obj interface{}) {
 }
 
 func (p *GenericProvider) updateLoadBalancer(oldObj, curObj interface{}) {
+
 	old := oldObj.(*lbapi.LoadBalancer)
 	cur := curObj.(*lbapi.LoadBalancer)
 
@@ -167,16 +168,7 @@ func (p *GenericProvider) updateLoadBalancer(oldObj, curObj interface{}) {
 		return
 	}
 
-	// ignore change of status
-	if reflect.DeepEqual(old.Spec, cur.Spec) &&
-		reflect.DeepEqual(old.Finalizers, cur.Finalizers) &&
-		reflect.DeepEqual(old.DeletionTimestamp, cur.DeletionTimestamp) &&
-		reflect.DeepEqual(old.Status.ProxyStatus.TCPConfigMap, cur.Status.ProxyStatus.TCPConfigMap) &&
-		reflect.DeepEqual(old.Status.ProxyStatus.UDPConfigMap, cur.Status.ProxyStatus.UDPConfigMap) {
-		return
-	}
-
-	log.Info("Updating LoadBalancer")
+	log.Info("Updating LoadBalancer -> enqueue")
 
 	p.queue.Enqueue(cur)
 
@@ -219,11 +211,6 @@ func (p *GenericProvider) updateConfigMap(oldObj, curObj interface{}) {
 
 	// namespace and name can not change, so we check one of them is enough
 	if p.filterConfigMap(cur) {
-		return
-	}
-
-	if reflect.DeepEqual(old.Data, cur.Data) {
-		// nothing changed
 		return
 	}
 

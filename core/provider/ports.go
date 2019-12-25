@@ -42,11 +42,16 @@ func GetExportedPorts(lb *lbapi.LoadBalancer, tcpcm, udpcm *v1.ConfigMap) ([]str
 
 	tcpPorts = append(tcpPorts, strconv.Itoa(httpPort), strconv.Itoa(httpsPort))
 
-	for port := range tcpcm.Data {
-		tcpPorts = append(tcpPorts, port)
+	if tcpcm != nil {
+		for port := range tcpcm.Data {
+			tcpPorts = append(tcpPorts, port)
+		}
 	}
-	for port := range udpcm.Data {
-		udpPorts = append(udpPorts, port)
+
+	if udpcm != nil {
+		for port := range udpcm.Data {
+			udpPorts = append(udpPorts, port)
+		}
 	}
 	return tcpPorts, udpPorts
 
