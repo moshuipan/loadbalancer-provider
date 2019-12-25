@@ -57,6 +57,7 @@ type Info struct {
 
 // StoreLister returns the configured store for loadbalancers, nodes
 type StoreLister struct {
+	KubeClient   kubernetes.Interface
 	LoadBalancer lblisters.LoadBalancerLister
 	Node         v1listers.NodeLister
 	ConfigMap    v1listers.ConfigMapLister

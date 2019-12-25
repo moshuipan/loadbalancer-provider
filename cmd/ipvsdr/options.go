@@ -24,7 +24,7 @@ import (
 // Options contains controller options
 type Options struct {
 	*options.Options
-	Unicast bool
+	Unicast bool // deprecated
 }
 
 // NewOptions reutrns a new Options

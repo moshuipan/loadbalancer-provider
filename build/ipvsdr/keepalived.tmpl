@@ -1,63 +1,53 @@
-{{ $iface := .iface }}{{ $netmask := .netmask }}{{ $acceptMark := .acceptMark }} {{ $httpPort := .httpPort }}
+{{ $lenInst := len .instances }} {{ $httpPort := .httpPort }}
 
 global_defs {
   vrrp_version 3
   vrrp_iptables {{ .iptablesChain }}
 }
 
-vrrp_instance vips {
-  state BACKUP
-  interface {{ $iface }}
-  virtual_router_id {{ .vrid }}
-  priority {{ .priority }}
+{{ if gt $lenInst 1 }}
+vrrp_sync_group sync_group {
+  group { {{ range $inst := .instances }}
+    inst_{{ $inst.Name}} {{ end }}
+  }
+}
+{{ end }}
+
+{{ range $inst := .instances }}
+vrrp_instance inst_{{ $inst.Name}} {
+  state {{ $inst.State }}
+  interface {{ $inst.Interface }}
+  virtual_router_id {{ $inst.Vrid }}
+  priority {{ $inst.Priority }}
   nopreempt
   advert_int 1
 
   track_interface {
-    {{ $iface }}
+    {{ $inst.Interface }}
   }
 
-  {{ if .useUnicast }}
-  unicast_src_ip {{ .myIP }}
-  unicast_peer { {{ range .neighbors }}
-    {{ .IP }}{{ end }}
+  unicast_src_ip {{ $inst.MyIP }}
+  unicast_peer { {{ range $inst.AllIPs }}
+    {{ if ne $inst.MyIP . }} {{ . }}{{ end }} {{end }}
   }
-  {{ end }}
 
-  virtual_ipaddress { {{ range .vips }}
-    {{ . }}{{ end }}
+  virtual_ipaddress {
+    {{ $inst.VIP }}
   }
-}
-
-# TCP
-{{ range $i, $vs := .vss }}
-virtual_server fwmark {{ $acceptMark }} {
-  delay_loop 5
-  lb_algo {{ $vs.Scheduler }}
-  lb_kind DR
-  persistence_timeout 360
-  protocol TCP
-
-  {{ range $j, $ip := $vs.RealServer }}
-  real_server {{ $ip }} 0 {
-    weight 1
-    TCP_CHECK {
-      connect_port {{ $httpPort }}
-      connect_timeout 3
-    }
-  }
-  {{ end }}
 }
 {{ end }}
 
-# UDP
-{{ range $i, $vs := .vss }}
-virtual_server fwmark {{ $acceptMark }} {
+static_ipaddress { {{ range $vs := .vss }}
+    {{ $vs.VIP }} dev lo scope global {{ end }}
+}
+
+# TCP and UDP
+{{ range $vs := .vss }}
+virtual_server fwmark {{ $vs.AcceptMark }} {
   delay_loop 5
-  lb_algo {{ $vs.Scheduler }}
-  lb_kind DR
+  lvs_sched {{ $vs.Scheduler }}
+  lvs_method DR
   persistence_timeout 360
-  protocol UDP
 
   {{ range $j, $ip := $vs.RealServer }}
   real_server {{ $ip }} 0 {

@@ -132,7 +132,7 @@ type KeepalivedBind struct {
 	// bind to interface which in subnet
 	//CIDR string `json:"cidr,omitempty"`
 	// bind to ip from node annotation
-	//NodeIPAnnotation string `json:"nodeIPAnnotation,omitempty"`
+	NodeIPAnnotation string `json:"nodeIPAnnotation,omitempty"`
 	// bind to iface from node annotation
 	//NodeIfaceAnnotation string `json:"nodeIfaceAnnotation,omitempty"`
 }

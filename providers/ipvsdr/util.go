@@ -19,15 +19,17 @@ package ipvsdr
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"io"
+	"net"
 	"os"
+
+	v1 "k8s.io/api/core/v1"
 )
 
 var (
-//	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
-//	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
-//	vethRegex     = regexp.MustCompile(`^veth.*`)
-//	lvsRegex      = regexp.MustCompile(`NAT`)
+	ipv4Version = "4"
+	ipv6Version = "6"
 )
 
 type stringSlice []string
@@ -44,28 +46,10 @@ func (slice stringSlice) pos(value string) int {
 	return -1
 }
 
-func appendIfMissing(slice []string, item string) []string {
-	for _, elem := range slice {
-		if elem == item {
-			return slice
-		}
-	}
-	return append(slice, item)
-}
-
-func getNeighbors(ip string, nodes []string) (neighbors []string) {
-	for _, neighbor := range nodes {
-		if ip != neighbor {
-			neighbors = append(neighbors, neighbor)
-		}
-	}
-	return
-}
-
 // getPriority returns the priority of one node using the
 // IP address as key. It starts in 100
-func getNodePriority(ip string, nodes []string) int {
-	return 100 + stringSlice(nodes).pos(ip)
+func getNodePriority(node string, nodes []string) int {
+	return 100 + stringSlice(nodes).pos(node)*60
 }
 
 func checksum(filename string) (string, error) {
@@ -82,4 +66,68 @@ func checksum(filename string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(result)), nil
+}
+
+func getIPVersion(ip net.IP) string {
+	if ip.To4() != nil {
+		return ipv4Version
+	}
+	if ip.To16() != nil {
+		return ipv6Version
+	}
+	return "unknown"
+}
+
+func getK8sNodeIP(node *v1.Node) (net.IP, error) {
+	var ip net.IP
+
+	addresses := node.Status.Addresses
+	addressMap := make(map[v1.NodeAddressType][]v1.NodeAddress)
+	for i := range addresses {
+		addressMap[addresses[i].Type] = append(addressMap[addresses[i].Type], addresses[i])
+	}
+	if addresses, ok := addressMap[v1.NodeExternalIP]; ok {
+		for _, address := range addresses {
+			if ip = net.ParseIP(address.Address); ip != nil {
+				return ip, nil
+			}
+		}
+	}
+	if addresses, ok := addressMap[v1.NodeInternalIP]; ok {
+		for _, address := range addresses {
+			if ip = net.ParseIP(address.Address); ip != nil {
+				return ip, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("host IP unknown; known addresses: %v", addresses)
+}
+
+func getIPFromMap(source map[string]string, key string) net.IP {
+	if len(source) == 0 {
+		return nil
+	}
+
+	v, ok := source[key]
+	if !ok {
+		return nil
+	}
+	return net.ParseIP(v)
+}
+
+func getK8sNodeMetadataIP(node *v1.Node, key string) net.IP {
+	ip := getIPFromMap(node.Labels, key)
+	if ip != nil {
+		return ip
+	}
+	return getIPFromMap(node.Annotations, key)
+}
+
+func isMaskAllFF(n *net.IPNet) bool {
+	for _, c := range n.Mask {
+		if c != 0xff {
+			return false
+		}
+	}
+	return true
 }
