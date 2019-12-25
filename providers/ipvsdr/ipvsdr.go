@@ -308,6 +308,16 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 			return err
 		}
 	}
+	{
+		for n, v := range nodeNetSelectors {
+			log.Debugf("////// nodeNetSelector: %v: %v", n, v)
+		}
+		for n, v := range annIPs {
+			for _, i := range v {
+				log.Debugf("====== ifaceNet: %v: %v", n, i)
+			}
+		}
+	}
 	if lbChange || listenPortChange {
 		err = p.onUpdateIPtables(lb, nodeNetSelectors, annIPs, tcps, udps)
 		if err != nil {
@@ -634,7 +644,7 @@ func (p *Provider) buildIptablesArgs(vip, protocol, iface string, mark int, mac 
 		args = append(args, "-m", "mac", "--mac-source", mac)
 	}
 	args = append(args, "-j", "MARK", "--set-xmark", fmt.Sprintf("%s/%s", strconv.Itoa(mark), mask))
-	log.Infof("build iptables args %v", args)
+	log.Debugf("build iptables args %v", args)
 	return args
 }
 
@@ -642,9 +652,14 @@ func (p *Provider) onUpdateIPtables(lb *lbapi.LoadBalancer, nodeNetSelectors all
 	nodes := lb.Spec.Nodes.Names
 	ipvs := lb.Spec.Providers.Ipvsdr
 	myIface, nodeIPs := p.getIPs(nodes, nodeNetSelectors, allNodeIPs, ipvs.Bind)
-
 	if myIface == nil {
 		return fmt.Errorf("Cannot get self iface ")
+	}
+
+	{
+		for _, n := range nodeIPs {
+			log.Debugf(">>>>>> ifacePreferredNet: %v, %v", n.preferredIP, n.ifaceNet)
+		}
 	}
 
 	if len(nodes) > len(nodeIPs) {
