@@ -179,6 +179,14 @@
   revision = "7a1797804a9c635c2e00ee98b0c964af501db0b3"
 
 [[projects]]
+  digest = "1:c0eec4f5d71d69aace7ac33d0b787f03825baa0ac9528a14c066e356121070a0"
+  name = "github.com/caicloud/go-common"
+  packages = ["kubernetes/client"]
+  pruneopts = "NUT"
+  revision = "03bf68f79b2c6ec06b32987b87e040c0d17f650a"
+  version = "v0.2.6"
+
+[[projects]]
   digest = "1:8f5acd4d4462b5136af644d25101f0968a7a94ee90fcb2059cec5b7cc42e0b20"
   name = "github.com/census-instrumentation/opencensus-proto"
   packages = [
@@ -998,6 +1006,7 @@
     "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2",
     "github.com/caicloud/clientset/util/node",
     "github.com/caicloud/clientset/util/syncqueue",
+    "github.com/caicloud/go-common/kubernetes/client",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",
@@ -1015,6 +1024,7 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/listers/core/v1",
+    "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/flowcontrol",

@@ -69,6 +69,10 @@
   name = "github.com/russross/blackfriday"
   version = "1.5.2"
 
+[[constraint]]
+  name = "github.com/caicloud/go-common"
+  version = "v0.2.6"
+
 [prune]
   non-go = true
   go-tests = true
