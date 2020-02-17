@@ -13,10 +13,9 @@ import (
 	cli "gopkg.in/urfave/cli.v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/caicloud/clientset/kubernetes"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
+	coreutil "github.com/caicloud/loadbalancer-provider/core/util"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	"github.com/caicloud/loadbalancer-provider/providers/azure"
 )
@@ -41,18 +40,10 @@ func Run(opts *Options) error {
 		log.ApplyOptions(log.InfoLevel)
 	}
 
-	// build config
 	log.Infof("load kubeconfig from %s", opts.Kubeconfig)
-	config, err := clientcmd.BuildConfigFromFlags("", opts.Kubeconfig)
+	clientset, err := coreutil.NewClientSet(opts.Kubeconfig)
 	if err != nil {
-		log.Fatal("Create kubeconfig error", log.Fields{"err": err})
-		return err
-	}
-
-	// create clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatal("Create kubernetes client error", log.Fields{"err": err})
+		log.Fatal("Create clientset error", log.Fields{"err": err})
 		return err
 	}
 
