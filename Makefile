@@ -38,11 +38,20 @@ TARGETS := ingress ipvsdr azure
 IMAGE_PREFIX ?= $(strip loadbalancer-provider-)
 IMAGE_SUFFIX ?= $(strip )
 
-# Container registries.
-REGISTRY ?= cargo.dev.caicloud.xyz/release
-
 # Container registry for base images.
 BASE_REGISTRY ?= cargo.caicloud.xyz/library
+
+# Go build GOARCH, you can choose to build amd64 or arm64
+ARCH ?= amd64
+
+# Change Dockerfile name and registry project name for arm64
+ifeq ($(ARCH),arm64)
+DOCKERFILE := Dockerfile.arm64
+REGISTRY ?= cargo.dev.caicloud.xyz/arm64v8
+else
+DOCKERFILE := Dockerfile
+REGISTRY ?= cargo.dev.caicloud.xyz/release
+endif
 
 #
 # These variables should not need tweaking.
@@ -110,7 +119,7 @@ build-linux:
 	  -v $(PWD):/go/src/$(ROOT)                                                        \
 	  -w /go/src/$(ROOT)                                                               \
 	  -e GOOS=linux                                                                    \
-	  -e GOARCH=amd64                                                                  \
+	  -e GOARCH=$(ARCH)                                                                \
 	  -e GOPATH=/go                                                                    \
 	  -e CGO_ENABLED=0                                                                 \
 	  -e SHELLOPTS=$(SHELLOPTS)                                                        \
@@ -127,7 +136,7 @@ container: build-linux
 	  image=$(IMAGE_PREFIX)$${target}$(IMAGE_SUFFIX);                                  \
 	  docker build -t $(REGISTRY)/$${image}:$(VERSION)                                 \
 	    --label $(DOCKER_LABELS)                                                       \
-	    -f $(BUILD_DIR)/$${target}/Dockerfile .;                                       \
+	    -f $(BUILD_DIR)/$${target}/$(DOCKERFILE) .;                                    \
 	done
 
 push: container

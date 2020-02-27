@@ -1,0 +1,5 @@
+FROM cargo.caicloud.xyz/arm64v8/lvs:alpine3.7
+
+COPY bin/ingress /root/ingress
+
+ENTRYPOINT ["/root/ingress"]
