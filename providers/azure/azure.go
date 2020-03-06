@@ -36,6 +36,7 @@ type Provider struct {
 	// load balancer rules cache
 	tcpRuleMap map[string]string
 	udpRuleMap map[string]string
+	lb         *lbapi.LoadBalancer
 
 	// cleanAzure
 	cleanAzure bool
@@ -81,16 +82,33 @@ func (l *Provider) setCacheReserveStatus(reserve *bool) {
 // 	return false
 // }
 
+func (l *Provider) isLBChanged(new *lbapi.LoadBalancer) bool {
+	old := l.lb
+	equal := old != nil &&
+		reflect.DeepEqual(old.Spec.Nodes, new.Spec.Nodes) &&
+		reflect.DeepEqual(old.Spec.Providers.Azure, new.Spec.Providers.Azure) &&
+		reflect.DeepEqual(old.Status.ProxyStatus.TCPConfigMap, new.Status.ProxyStatus.TCPConfigMap) &&
+		reflect.DeepEqual(old.Status.ProxyStatus.UDPConfigMap, new.Status.ProxyStatus.UDPConfigMap) &&
+		reflect.DeepEqual(old.DeletionTimestamp, new.DeletionTimestamp) &&
+		reflect.DeepEqual(old.Finalizers, new.Finalizers)
+	return !equal
+}
+
 // OnUpdate update loadbalancer
 func (l *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 
 	log.Infof("OnUpdate......")
-	if lb.Spec.Providers.Azure == nil {
-		return l.cleanupAzureLB(nil, false)
-	}
+	lbChanged := l.isLBChanged(lb)
+	if lbChanged {
+		if lb.Spec.Providers.Azure == nil {
+			l.lb = lb
+			return l.cleanupAzureLB(nil, false)
+		}
 
-	if lb.DeletionTimestamp != nil {
-		return l.cleanupAzureLB(lb, true)
+		if lb.DeletionTimestamp != nil {
+			l.lb = lb
+			return l.cleanupAzureLB(lb, true)
+		}
 	}
 
 	// ignore change of azure's name groupName and reserve status
@@ -103,9 +121,7 @@ func (l *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 		return err
 	}
 	// ignore change of other providers
-	if reflect.DeepEqual(lb.Spec.Providers.Azure, l.oldAzureProvider) &&
-		reflect.DeepEqual(l.nodes, lb.Spec.Nodes.Names) &&
-		!ruleChange {
+	if !lbChanged && !ruleChange {
 		return nil
 	}
 
@@ -136,6 +152,7 @@ func (l *Provider) updateCacheData(lb *lbapi.LoadBalancer, tcp, udp map[string]s
 	l.nodes = lb.Spec.Nodes.Names
 	l.tcpRuleMap = tcp
 	l.udpRuleMap = udp
+	l.lb = lb
 }
 
 // Start ...

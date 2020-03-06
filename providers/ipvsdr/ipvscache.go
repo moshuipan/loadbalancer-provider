@@ -25,7 +25,18 @@ func (ipvs *ipvsCacheCleaner) stop() {
 	close(ipvs.stopCh)
 }
 
+func (ipvs *ipvsCacheCleaner) setVIP(vips []string) {
+	ipvs.vip = ""
+	if len(vips) > 0 {
+		ipvs.vip = vips[0]
+	}
+}
+
 func (ipvs *ipvsCacheCleaner) worker() {
+	if ipvs.vip == "" {
+		return
+	}
+
 	vipExists := checkVIPExists(ipvs.vip)
 	if vipExists {
 		// skip check ipvs persistent connection cache
