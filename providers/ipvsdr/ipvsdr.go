@@ -41,7 +41,9 @@ import (
 )
 
 const (
+	tableFilter           = "filter"
 	tableMangle           = "mangle"
+	iptablesOutputChain   = "LOADBALANCER-IPVS-DR-OUTPUT"
 	networkInfoAnnotation = "loadbalance.caicloud.io/node-net"
 )
 
@@ -70,7 +72,6 @@ type Provider struct {
 	nodeName          string
 	reloadRateLimiter flowcontrol.RateLimiter
 	keepalived        *keepalived
-	ipvsCacheChecker  *ipvsCacheCleaner
 	storeLister       core.StoreLister
 	sysctlDefault     map[string]string
 	ipt               iptables.Interface
@@ -93,7 +94,6 @@ func NewIpvsdrProvider(nodeName string) (*Provider, error) {
 		nodeName:          nodeName,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(10.0, 10),
 		keepalived:        &keepalived{},
-		ipvsCacheChecker:  &ipvsCacheCleaner{stopCh: make(chan struct{})},
 		sysctlDefault:     make(map[string]string),
 		ipt:               iptables.New(execer, dbus, iptables.ProtocolIpv4),
 		ip6t:              iptables.New(execer, dbus, iptables.ProtocolIpv6),
@@ -336,12 +336,6 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 	p.cache.tcps = tcps
 	p.cache.udps = udps
 
-	vips := []string{}
-	if ipvs.HAMode != lbapi2.ActivePassiveHA {
-		vips = getVIPs(&ipvs.KeepalivedProvider)
-	}
-	p.ipvsCacheChecker.setVIP(vips)
-
 	return nil
 }
 
@@ -510,7 +504,6 @@ func (p *Provider) Start() {
 	_ = p.changeSysctl()
 	p.ensureChain()
 	p.keepalived.Start()
-	p.ipvsCacheChecker.start()
 }
 
 // WaitForStart waits for ipvsdr fully run
@@ -533,7 +526,6 @@ func (p *Provider) Stop() error {
 
 	p.deleteChain()
 
-	p.ipvsCacheChecker.stop()
 	p.keepalived.Stop()
 
 	return nil
@@ -565,9 +557,20 @@ func (p *Provider) ensureChain() {
 		if ae {
 			log.Infof("chain %v already existed", iptablesChain)
 		}
-
 		// add rule to let all traffic jump to our chain
 		_, _ = ipt.EnsureRule(iptables.Append, tableMangle, iptables.ChainPrerouting, "-j", iptablesChain)
+
+		// create chain
+		ae, err = ipt.EnsureChain(tableFilter, iptables.Chain(iptablesOutputChain))
+		if err != nil {
+			log.Fatalf("unexpected error: %v", err)
+		}
+		if ae {
+			log.Infof("chain %v already existed", iptablesOutputChain)
+		}
+
+		// add rule to let all traffic jump to our chain
+		_, _ = ipt.EnsureRule(iptables.Append, tableFilter, iptables.ChainOutput, "-j", iptablesOutputChain)
 	}
 }
 
@@ -575,20 +578,26 @@ func (p *Provider) flushChain() {
 	log.Info("flush iptables rules", log.Fields{"table": tableMangle, "chain": iptablesChain})
 	_ = p.ipt.FlushChain(tableMangle, iptables.Chain(iptablesChain))
 	_ = p.ip6t.FlushChain(tableMangle, iptables.Chain(iptablesChain))
+
+	_ = p.ipt.FlushChain(tableFilter, iptables.Chain(iptablesOutputChain))
+	_ = p.ip6t.FlushChain(tableFilter, iptables.Chain(iptablesOutputChain))
 }
 
 func (p *Provider) deleteChain() {
 	// flush chain
 	p.flushChain()
-	// delete jump rule
-	_ = p.ipt.DeleteRule(tableMangle, iptables.ChainPrerouting, "-j", iptablesChain)
-	// delete chain
-	_ = p.ipt.DeleteChain(tableMangle, iptablesChain)
 
-	// delete jump rule
-	_ = p.ip6t.DeleteRule(tableMangle, iptables.ChainPrerouting, "-j", iptablesChain)
-	// delete chain
-	_ = p.ip6t.DeleteChain(tableMangle, iptablesChain)
+	for _, ipt := range []iptables.Interface{p.ipt, p.ip6t} {
+		// delete jump rule
+		_ = ipt.DeleteRule(tableMangle, iptables.ChainPrerouting, "-j", iptablesChain)
+		// delete chain
+		_ = ipt.DeleteChain(tableMangle, iptablesChain)
+
+		// delete jump rule
+		_ = ipt.DeleteRule(tableFilter, iptables.ChainOutput, "-j", iptablesOutputChain)
+		// delete chain
+		_ = ipt.DeleteChain(tableFilter, iptablesOutputChain)
+	}
 }
 
 // changeSysctl changes the required network setting in /proc to get
@@ -672,11 +681,31 @@ func (p *Provider) onUpdateIPtables(lb *lbapi.LoadBalancer, nodeNetSelectors all
 		for _, vip := range getVIPs(&ipvs.KeepalivedProvider) {
 			if vip != "" {
 				p.ensureIptablesMark(vip, myIface.Name, nodeIPs, tcps, udps)
+				p.ensureIptablesOutputDrop(vip, myIface.Name)
 			}
 		}
 	}
 
 	return nil
+}
+
+func (p *Provider) ensureIptablesOutputDrop(vip, iface string) {
+	// ensure Drop rule after Mark rule
+
+	ipt := p.ipt
+	if getIPVersion(net.ParseIP(vip)) == ipv6Version {
+		ipt = p.ip6t
+	}
+	for _, proto := range []string{"udp", "tcp"} {
+		rule := []string{
+			"-o", iface,
+			"-d", vip,
+			"-p", proto,
+			"-m", "mark", "--mark", fmt.Sprintf("%d/%s", dropMark, mask),
+			"-j", "DROP",
+		}
+		_, _ = ipt.EnsureRule(iptables.Append, tableFilter, iptablesOutputChain, rule...)
+	}
 }
 
 func (p *Provider) ensureIptablesMark(vip, iface string, nodeIPs ifacePreferredNetList, tcpPorts, udpPorts []string) {

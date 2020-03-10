@@ -17,7 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"fmt"
 	"os"
 
 	log "github.com/zoumo/logdog"
@@ -35,14 +34,4 @@ func loadIPVSModule() error {
 
 	_, err = os.Stat("/proc/net/ip_vs")
 	return err
-}
-
-func resetIPVS() error {
-	log.Info("cleaning ipvs configuration")
-	_, err := k8sexec.New().Command("ipvsadm", "-C").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error removing ipvs configuration: %v", err)
-	}
-
-	return nil
 }

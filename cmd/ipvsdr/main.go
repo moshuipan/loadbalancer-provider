@@ -89,12 +89,6 @@ func Run(opts *Options) error {
 		return err
 	}
 
-	err = resetIPVS()
-	if err != nil {
-		log.Error("reset ipvsd error", log.Fields{"err": err})
-		return err
-	}
-
 	nodeName, err := corenode.GetNodeNameForPod(clientset, opts.PodNamespace, opts.PodName)
 	if err != nil {
 		log.Fatal("Can not get node name", log.Fields{"err": err})
