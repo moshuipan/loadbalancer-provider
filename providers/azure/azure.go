@@ -25,7 +25,7 @@ import (
 // Provider azure lb provider
 type Provider struct {
 	storeLister           core.StoreLister
-	clientset             *kubernetes.Clientset
+	clientset             kubernetes.Interface
 	loadBalancerNamespace string
 	loadBalancerName      string
 
@@ -43,7 +43,7 @@ type Provider struct {
 }
 
 // New creates a new azure LoadBalancer Provider.
-func New(clientset *kubernetes.Clientset, name, namespace string) (*Provider, error) {
+func New(clientset kubernetes.Interface, name, namespace string) (*Provider, error) {
 	azure := &Provider{
 		clientset:             clientset,
 		loadBalancerName:      name,
@@ -309,7 +309,7 @@ func (l *Provider) pathLoadBalancerName(lb *lbapi.LoadBalancer, name string) err
 	lb.Spec.Providers.Azure.Name = name
 	l.setCacheAzureLoadbalancer(lb.Spec.Providers.Azure)
 	patch := fmt.Sprintf(`{"spec":{"providers":{"azure":{"name":"%s"}}}}`, name)
-	_, err := l.clientset.LoadbalanceV1alpha2().LoadBalancers(lb.Namespace).Patch(lb.Name, types.MergePatchType, []byte(patch))
+	_, err := l.clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(lb.Namespace).Patch(lb.Name, types.MergePatchType, []byte(patch))
 	if err != nil {
 		log.Errorf("patch lb %s failed %v", lb.Name, err)
 		return err
@@ -358,7 +358,7 @@ func (l *Provider) patachFinalizersAndStatus(lb *lbapi.LoadBalancer, deleteLB bo
 
 	patchJSON := strings.Join(patchs, ",")
 	patchJSON = fmt.Sprintf("{%s}", patchJSON)
-	_, err := l.clientset.LoadbalanceV1alpha2().LoadBalancers(namespace).Patch(name, types.MergePatchType, []byte(patchJSON))
+	_, err := l.clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(namespace).Patch(name, types.MergePatchType, []byte(patchJSON))
 	if err != nil {
 		log.Errorf("patch lb finalizers %s failed %v patch info %s", name, err, patchJSON)
 		return err
@@ -407,7 +407,7 @@ func (l *Provider) patchLoadBalancerAzureStatus(lb *lbapi.LoadBalancer, phase lb
 	if lb != nil {
 		namespace, name = lb.Namespace, lb.Name
 	}
-	_, err := l.clientset.LoadbalanceV1alpha2().LoadBalancers(namespace).Patch(name, types.MergePatchType, []byte(patch))
+	_, err := l.clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(namespace).Patch(name, types.MergePatchType, []byte(patch))
 	if err != nil {
 		log.Errorf("patch lb %s failed %v", name, err)
 		return err

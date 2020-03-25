@@ -186,7 +186,7 @@ func (p *Provider) registerNodeNetwork(lb *lbapi.LoadBalancer, nns *nodeNetSelec
 	}
 	lb.Annotations[networkInfoAnnotation] = string(bs)
 
-	_, err = p.storeLister.KubeClient.LoadbalanceV1alpha2().LoadBalancers(lb.Namespace).Update(lb)
+	_, err = p.storeLister.KubeClient.Custom().LoadbalanceV1alpha2().LoadBalancers(lb.Namespace).Update(lb)
 	if err != nil {
 		log.Warningf("Failed to update lb %s ann: %v", lb.Name, err)
 	}

@@ -64,7 +64,7 @@ func Run(opts *Options) error {
 		return err
 	}
 
-	lb, err := clientset.LoadbalanceV1alpha2().LoadBalancers(opts.LoadBalancerNamespace).Get(opts.LoadBalancerName, metav1.GetOptions{})
+	lb, err := clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(opts.LoadBalancerNamespace).Get(opts.LoadBalancerName, metav1.GetOptions{})
 	if err != nil {
 		log.Fatal("Can not find loadbalancer resource", log.Fields{"lb.ns": opts.LoadBalancerNamespace, "lb.name": opts.LoadBalancerName})
 		return err
@@ -80,7 +80,7 @@ func Run(opts *Options) error {
 		return err
 	}
 
-	nodeName, err := corenode.GetNodeNameForPod(clientset, opts.PodNamespace, opts.PodName)
+	nodeName, err := corenode.GetNodeNameForPod(clientset.Native(), opts.PodNamespace, opts.PodName)
 	if err != nil {
 		log.Fatal("Can not get node name", log.Fields{"err": err})
 		return err

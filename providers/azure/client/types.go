@@ -44,7 +44,7 @@ func (c *securityGroupClientWrapper) CreateOrUpdate(ctx context.Context, resourc
 		return network.SecurityGroup{}, err
 	}
 
-	err = createFuture.WaitForCompletion(ctx, c.SecurityGroupsClient.Client)
+	err = createFuture.WaitForCompletionRef(ctx, c.SecurityGroupsClient.Client)
 	if err != nil {
 		return network.SecurityGroup{}, err
 	}
@@ -92,7 +92,7 @@ func (l *loadBalancerClientWrapper) CreateOrUpdate(ctx context.Context,
 	if e != nil {
 		return network.LoadBalancer{}, e
 	}
-	e = future.WaitForCompletion(ctx, l.LoadBalancersClient.Client)
+	e = future.WaitForCompletionRef(ctx, l.LoadBalancersClient.Client)
 	if e != nil {
 		return network.LoadBalancer{}, e
 	}
@@ -154,7 +154,7 @@ func (c *virtualMachineClientWrapper) CreateOrUpdate(ctx context.Context, resour
 		return compute.VirtualMachine{}, err
 	}
 
-	err = createFuture.WaitForCompletion(ctx, c.VirtualMachinesClient.Client)
+	err = createFuture.WaitForCompletionRef(ctx, c.VirtualMachinesClient.Client)
 	if err != nil {
 		return compute.VirtualMachine{}, err
 	}
@@ -172,7 +172,7 @@ func (c *virtualMachineClientWrapper) Delete(ctx context.Context, resourceGroupN
 		return err
 	}
 
-	err = deleteFuture.WaitForCompletion(ctx, c.VirtualMachinesClient.Client)
+	err = deleteFuture.WaitForCompletionRef(ctx, c.VirtualMachinesClient.Client)
 	if err != nil {
 		return err
 	}
@@ -217,7 +217,7 @@ func (c *networkInterfaceClientWrapper) CreateOrUpdate(ctx context.Context, reso
 		return network.Interface{}, err
 	}
 
-	err = createFuture.WaitForCompletion(ctx, c.InterfacesClient.Client)
+	err = createFuture.WaitForCompletionRef(ctx, c.InterfacesClient.Client)
 	if err != nil {
 		return network.Interface{}, err
 	}
@@ -235,7 +235,7 @@ func (c *networkInterfaceClientWrapper) Delete(ctx context.Context, resourceGrou
 		return err
 	}
 
-	err = deleteFuture.WaitForCompletion(ctx, c.InterfacesClient.Client)
+	err = deleteFuture.WaitForCompletionRef(ctx, c.InterfacesClient.Client)
 	if err != nil {
 		return err
 	}

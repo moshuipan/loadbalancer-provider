@@ -57,8 +57,8 @@ func NewLoadBalancerProvider(cfg *Configuration) *GenericProvider {
 		stopCh:   make(chan struct{}),
 	}
 
-	lbinformer := gp.factory.Loadbalance().V1alpha2().LoadBalancers()
-	cminformer := gp.factory.Core().V1().ConfigMaps()
+	lbinformer := gp.factory.Custom().Loadbalance().V1alpha2().LoadBalancers()
+	cminformer := gp.factory.Native().Core().V1().ConfigMaps()
 	lbinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    gp.addLoadBalancer,
 		UpdateFunc: gp.updateLoadBalancer,
@@ -69,11 +69,11 @@ func NewLoadBalancerProvider(cfg *Configuration) *GenericProvider {
 	})
 
 	// sync nodes
-	nodeinformer := gp.factory.Core().V1().Nodes()
+	nodeinformer := gp.factory.Native().Core().V1().Nodes()
 	nodeinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
 
 	// sync secrets
-	secretinformer := gp.factory.Core().V1().Secrets()
+	secretinformer := gp.factory.Native().Core().V1().Secrets()
 	secretinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
 
 	gp.cfg.Backend.SetListers(StoreLister{
@@ -99,12 +99,8 @@ func (p *GenericProvider) Start() {
 
 	// wait cache synced
 	log.Info("Wait for all caches synced")
-	synced := p.factory.WaitForCacheSync(p.stopCh)
-	for tpy, sync := range synced {
-		if !sync {
-			log.Error("Wait for cache sync timeout", log.Fields{"type": tpy})
-			return
-		}
+	if err := p.factory.WaitForCacheSync(p.stopCh); err != nil {
+		log.Error("Wait for cache sync timeout")
 	}
 	log.Info("All caches have synced, Running LoadBalancer Controller ...")
 

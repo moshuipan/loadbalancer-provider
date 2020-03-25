@@ -27,7 +27,7 @@ import (
 )
 
 // NewClientSet create a new clientset
-func NewClientSet(kubeconfig string) (*kubernetes.Clientset, error) {
+func NewClientSet(kubeconfig string) (kubernetes.Interface, error) {
 	// build config
 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
 	if err != nil {

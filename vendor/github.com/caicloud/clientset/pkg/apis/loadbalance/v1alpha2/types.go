@@ -143,7 +143,7 @@ type KeepalivedProvider struct {
 	VIP string `json:"vip,omitempty"`
 	// Virtual IP Addresses
 	VIPs []string `json:"vips,omitempty"`
-	// virutal server shceduler algorithm type
+	// virtual server shceduler algorithm type
 	Scheduler IpvsScheduler `json:"scheduler"`
 	// ActiveActive or ActivePassive
 	HAMode HAMode `json:"haMode,omitempty"`

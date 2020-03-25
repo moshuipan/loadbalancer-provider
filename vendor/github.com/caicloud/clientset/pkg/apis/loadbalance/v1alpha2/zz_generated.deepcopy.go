@@ -323,7 +323,7 @@ func (in *LoadBalancer) DeepCopyObject() runtime.Object {
 func (in *LoadBalancerList) DeepCopyInto(out *LoadBalancerList) {
 	*out = *in
 	out.TypeMeta = in.TypeMeta
-	out.ListMeta = in.ListMeta
+	in.ListMeta.DeepCopyInto(&out.ListMeta)
 	if in.Items != nil {
 		in, out := &in.Items, &out.Items
 		*out = make([]LoadBalancer, len(*in))
