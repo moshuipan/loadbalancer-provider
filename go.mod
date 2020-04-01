@@ -16,7 +16,6 @@ require (
 	github.com/keybase/go-ps v0.0.0-20190827175125-91aafc93ba19
 	github.com/moby/moby v1.13.1
 	github.com/stretchr/testify v1.5.1
-	github.com/zoumo/golib v0.0.0-20200301040818-9e30b8c6ea9e
 	github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf
 	github.com/zoumo/register v0.0.0-20171023035538-6efd25730b1c // indirect
 	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6 // indirect

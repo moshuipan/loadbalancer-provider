@@ -206,8 +206,6 @@ github.com/pmezard/go-difflib/difflib
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.5.1
 github.com/stretchr/testify/assert
-# github.com/zoumo/golib v0.0.0-20200301040818-9e30b8c6ea9e
-github.com/zoumo/golib/netutil
 # github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf
 github.com/zoumo/logdog
 github.com/zoumo/logdog/pkg/pythonic

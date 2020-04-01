@@ -306,8 +306,6 @@ github.com/urfave/cli v1.20.0/go.mod h1:70zkFmudgCuE/ngEzBv17Jvp/497gISqfk5gWijb
 github.com/vektah/gqlparser v1.1.2/go.mod h1:1ycwN7Ij5njmMkPPAOaRFY4rET2Enx7IkVv3vaXspKw=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
-github.com/zoumo/golib v0.0.0-20200301040818-9e30b8c6ea9e h1:v9fa2IGAhtS2Uv9e6PwXL+VT6fF75nTS85ZNQgZYMiA=
-github.com/zoumo/golib v0.0.0-20200301040818-9e30b8c6ea9e/go.mod h1:92SNrHmy/Ake6SWmKahzD66Y1GrVXhYQZcVy40ORyPo=
 github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf h1:svzlnihgBdq+7vW2DxEC99CQOkKRv9VEDi4pKuh8nos=
 github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf/go.mod h1:7UypYQoeCuEJlcamQZwZJhyX3Bkmak/tIautN1V0NWc=
 github.com/zoumo/register v0.0.0-20171023035538-6efd25730b1c h1:LUmFA6+y7JmK9YZ2uIEH7UfV3STMsYE19eXg8SQlpC8=
@@ -348,7 +346,6 @@ golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73r
 golang.org/x/net v0.0.0-20180826012351-8a410e7b638d/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181005035420-146acd28ed58/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
-golang.org/x/net v0.0.0-20181029044818-c44066c5c816/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181114220301-adae6a3d119a/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181220203305-927f97764cc3/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20190108225652-1e06a53dbb7e/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
