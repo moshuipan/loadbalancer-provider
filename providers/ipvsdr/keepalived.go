@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/caicloud/loadbalancer-provider/pkg/execd"
-	log "github.com/zoumo/logdog"
+	log "k8s.io/klog"
 )
 
 const (
@@ -115,7 +115,7 @@ func (k *keepalived) Reload() error {
 	log.Info("reloading keepalived")
 	err := k.cmd.Signal(syscall.SIGHUP)
 	if err == execd.ErrNotRunning {
-		log.Warn("keepalived is not running, skip the reload")
+		log.Warning("keepalived is not running, skip the reload")
 		return nil
 	}
 	if err != nil {

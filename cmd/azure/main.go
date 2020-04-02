@@ -9,10 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	log "github.com/zoumo/logdog"
 	cli "gopkg.in/urfave/cli.v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	log "k8s.io/klog"
 
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	coreutil "github.com/caicloud/loadbalancer-provider/core/util"
@@ -25,31 +25,25 @@ func Run(opts *Options) error {
 	info := version.Get()
 	log.Infof("Provider Build Information %v", info.Pretty())
 
-	log.Info("Provider Running with", log.Fields{
-		"debug":     opts.Debug,
-		"kubconfig": opts.Kubeconfig,
-		"lb.ns":     opts.LoadBalancerNamespace,
-		"lb.name":   opts.LoadBalancerName,
-		"pod.name":  opts.PodName,
-		"pod.ns":    opts.PodNamespace,
-	})
-
-	if opts.Debug {
-		log.ApplyOptions(log.DebugLevel)
-	} else {
-		log.ApplyOptions(log.InfoLevel)
-	}
+	log.Info("Provider Running with",
+		"debug:", opts.Debug,
+		"kubconfig:", opts.Kubeconfig,
+		"lb.ns:", opts.LoadBalancerNamespace,
+		"lb.name:", opts.LoadBalancerName,
+		"pod.name:", opts.PodName,
+		"pod.ns:", opts.PodNamespace,
+	)
 
 	log.Infof("load kubeconfig from %s", opts.Kubeconfig)
 	clientset, err := coreutil.NewClientSet(opts.Kubeconfig)
 	if err != nil {
-		log.Fatal("Create clientset error", log.Fields{"err": err})
+		log.Fatal("Create clientset error", err)
 		return err
 	}
 
 	lb, err := clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(opts.LoadBalancerNamespace).Get(opts.LoadBalancerName, metav1.GetOptions{})
 	if err != nil {
-		log.Fatal("Can not find loadbalancer resource", log.Fields{"lb.ns": opts.LoadBalancerNamespace, "lb.name": opts.LoadBalancerName})
+		log.Fatal("Can not find loadbalancer resource", "lb.ns:", opts.LoadBalancerNamespace, "lb.name:", opts.LoadBalancerName)
 		return err
 	}
 

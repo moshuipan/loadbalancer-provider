@@ -24,11 +24,11 @@ import (
 	lblisters "github.com/caicloud/clientset/listers/loadbalance/v1alpha2"
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	"github.com/caicloud/clientset/util/syncqueue"
-	log "github.com/zoumo/logdog"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
+	log "k8s.io/klog"
 )
 
 // GenericProvider holds the boilerplate code required to build an LoadBalancer Provider.
@@ -238,7 +238,7 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 
 	lb, err := p.lbLister.LoadBalancers(namespace).Get(name)
 	if errors.IsNotFound(err) {
-		log.Warn("LoadBalancer has been deleted", log.Fields{"lb": key})
+		log.Warning("LoadBalancer has been deleted", "lb:", key)
 		// deleted
 		// TODO shutdown?
 		return nil
@@ -249,7 +249,7 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 	}
 
 	if err := lbapi.ValidateLoadBalancer(lb); err != nil {
-		log.Debug("invalid loadbalancer scheme", log.Fields{"err": err})
+		log.Errorf("invalid loadbalancer scheme: %v", err)
 		return err
 	}
 

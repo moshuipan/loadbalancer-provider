@@ -30,8 +30,8 @@ import (
 	coreutil "github.com/caicloud/loadbalancer-provider/core/util"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	"github.com/caicloud/loadbalancer-provider/providers/ipvsdr"
-	log "github.com/zoumo/logdog"
 	"gopkg.in/urfave/cli.v1"
+	log "k8s.io/klog"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -42,31 +42,25 @@ func Run(opts *Options) error {
 	info := version.Get()
 	log.Infof("Provider Build Information %v", info.Pretty())
 
-	log.Info("Provider Running with", log.Fields{
-		"debug":     opts.Debug,
-		"kubconfig": opts.Kubeconfig,
-		"lb.ns":     opts.LoadBalancerNamespace,
-		"lb.name":   opts.LoadBalancerName,
-		"pod.name":  opts.PodName,
-		"pod.ns":    opts.PodNamespace,
-	})
-
-	if opts.Debug {
-		log.ApplyOptions(log.DebugLevel)
-	} else {
-		log.ApplyOptions(log.InfoLevel)
-	}
+	log.Info("Provider Running with",
+		"debug:", opts.Debug,
+		"kubconfig:", opts.Kubeconfig,
+		"lb.ns:", opts.LoadBalancerNamespace,
+		"lb.name:", opts.LoadBalancerName,
+		"pod.name:", opts.PodName,
+		"pod.ns:", opts.PodNamespace,
+	)
 
 	log.Infof("load kubeconfig from %s", opts.Kubeconfig)
 	clientset, err := coreutil.NewClientSet(opts.Kubeconfig)
 	if err != nil {
-		log.Fatal("Create clientset error", log.Fields{"err": err})
+		log.Fatal("Create clientset error", err)
 		return err
 	}
 
 	lb, err := clientset.Custom().LoadbalanceV1alpha2().LoadBalancers(opts.LoadBalancerNamespace).Get(opts.LoadBalancerName, metav1.GetOptions{})
 	if err != nil {
-		log.Fatal("Can not find loadbalancer resource", log.Fields{"lb.ns": opts.LoadBalancerNamespace, "lb.name": opts.LoadBalancerName})
+		log.Fatal("Can not find loadbalancer resource", "lb.ns:", opts.LoadBalancerNamespace, "lb.name:", opts.LoadBalancerName)
 		return err
 	}
 
@@ -76,19 +70,19 @@ func Run(opts *Options) error {
 
 	err = loadIPVSModule()
 	if err != nil {
-		log.Error("load ipvs module error", log.Fields{"err": err})
+		log.Error("load ipvs module error", err)
 		return err
 	}
 
 	nodeName, err := corenode.GetNodeNameForPod(clientset.Native(), opts.PodNamespace, opts.PodName)
 	if err != nil {
-		log.Fatal("Can not get node name", log.Fields{"err": err})
+		log.Fatal("Can not get node name", err)
 		return err
 	}
 
 	ipvsdr, err := ipvsdr.NewIpvsdrProvider(nodeName)
 	if err != nil {
-		log.Error("Create ipvsdr provider error", log.Fields{"err": err})
+		log.Errorf("Create ipvsdr provider error: %v", err)
 		return err
 	}
 

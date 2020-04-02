@@ -19,7 +19,7 @@ package main
 import (
 	"os"
 
-	log "github.com/zoumo/logdog"
+	log "k8s.io/klog"
 
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 )

@@ -21,7 +21,7 @@ import (
 	"github.com/caicloud/loadbalancer-provider/core/pkg/sysctl"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
-	log "github.com/zoumo/logdog"
+	log "k8s.io/klog"
 
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
@@ -115,7 +115,7 @@ func (p *Sidecar) Stop() error {
 
 	err := p.resetSysctl()
 	if err != nil {
-		log.Error("reset sysctl error", log.Fields{"err": err})
+		log.Errorf("reset sysctl error: %v", err)
 	}
 
 	return nil
@@ -143,7 +143,7 @@ func (p *Sidecar) changeSysctl() error {
 	var err error
 	p.sysctlDefault, err = sysctl.BulkModify(sysctlAdjustments)
 	if err != nil {
-		log.Error("error change sysctl", log.Fields{"err": err})
+		log.Errorf("error change sysctl: %v", err)
 		return err
 	}
 	return nil
@@ -151,7 +151,7 @@ func (p *Sidecar) changeSysctl() error {
 
 // resetSysctl resets the network setting
 func (p *Sidecar) resetSysctl() error {
-	log.Info("reset sysctl to original value", log.Fields{"defaults": p.sysctlDefault})
+	log.Info("reset sysctl to original value", "defaults:", p.sysctlDefault)
 	_, err := sysctl.BulkModify(p.sysctlDefault)
 	return err
 }

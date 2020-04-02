@@ -9,7 +9,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-01-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
-	log "github.com/zoumo/logdog"
+	log "k8s.io/klog"
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
@@ -672,7 +672,7 @@ func detachNetworkInterfacesAndLoadBalancer(c *client.Client, detachID string, p
 		return err
 	}
 	if nic.IPConfigurations == nil {
-		log.Warnf("networkInterface[%s/%s] ipc is zero, skip it", name)
+		log.Warningf("networkInterface[%s/%s] ipc is zero, skip it", groupName, name)
 		return nil
 	}
 
@@ -719,7 +719,7 @@ func attachNetworkInterfacesAndLoadBalancer(c *client.Client, attachID string, p
 		return err
 	}
 	if nic.IPConfigurations == nil {
-		log.Warnf("networkInterface[%s/%s] ipc is zero, skip it", name)
+		log.Warningf("networkInterface[%s/%s] ipc is zero, skip it", groupName, name)
 		return fmt.Errorf("ipc is zero")
 	}
 

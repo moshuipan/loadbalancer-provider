@@ -16,14 +16,13 @@ require (
 	github.com/keybase/go-ps v0.0.0-20190827175125-91aafc93ba19
 	github.com/moby/moby v1.13.1
 	github.com/stretchr/testify v1.5.1
-	github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf
-	github.com/zoumo/register v0.0.0-20171023035538-6efd25730b1c // indirect
 	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6 // indirect
 	golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4 // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 	k8s.io/api v0.17.3
 	k8s.io/apimachinery v0.17.3
 	k8s.io/client-go v11.0.1-0.20190516230509-ae8359b20417+incompatible
+	k8s.io/klog v1.0.0
 	k8s.io/kubernetes v1.7.16
 )
 

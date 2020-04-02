@@ -22,7 +22,7 @@ import (
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	lbapi2 "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
-	log "github.com/zoumo/logdog"
+	log "k8s.io/klog"
 )
 
 type nodeNetSelector struct {

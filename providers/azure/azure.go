@@ -10,10 +10,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-01-01/network"
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
-	log "github.com/zoumo/logdog"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	log "k8s.io/klog"
 
 	"github.com/caicloud/clientset/kubernetes"
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"

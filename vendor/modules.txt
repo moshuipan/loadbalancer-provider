@@ -206,12 +206,6 @@ github.com/pmezard/go-difflib/difflib
 github.com/spf13/pflag
 # github.com/stretchr/testify v1.5.1
 github.com/stretchr/testify/assert
-# github.com/zoumo/logdog v0.0.0-20170807090711-f8d72e099cbf
-github.com/zoumo/logdog
-github.com/zoumo/logdog/pkg/pythonic
-github.com/zoumo/logdog/pkg/when
-# github.com/zoumo/register v0.0.0-20171023035538-6efd25730b1c
-github.com/zoumo/register
 # golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2

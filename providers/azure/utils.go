@@ -8,8 +8,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2018-01-01/network"
 	"github.com/Azure/go-autorest/autorest/to"
-	log "github.com/zoumo/logdog"
 	v1 "k8s.io/api/core/v1"
+	log "k8s.io/klog"
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
@@ -238,7 +238,7 @@ func makeUpRules(azlb *network.LoadBalancer, tcpMap, udpMap map[string]string) b
 	for port, service := range tcpMap {
 		newRule, err := newRuleWithConfig(azlb, port, service, network.TransportProtocolTCP)
 		if err != nil {
-			log.Warnf("invalid port %v error : %v", port, err)
+			log.Warningf("invalid port %v error : %v", port, err)
 			continue
 		}
 		newRules = append(newRules, *newRule)
@@ -247,7 +247,7 @@ func makeUpRules(azlb *network.LoadBalancer, tcpMap, udpMap map[string]string) b
 	for port, service := range udpMap {
 		newRule, err := newRuleWithConfig(azlb, port, service, network.TransportProtocolUDP)
 		if err != nil {
-			log.Warnf("invalid port %v error : %v", port, err)
+			log.Warningf("invalid port %v error : %v", port, err)
 			continue
 		}
 		newRules = append(newRules, *newRule)
@@ -273,7 +273,7 @@ func remainConstantRules(oldRules []network.LoadBalancingRule, tcpMap, udpMap ma
 		case network.TransportProtocolUDP:
 			m = udpMap
 		default:
-			log.Warnf("invalid Protocol %s ", rule.Protocol)
+			log.Warningf("invalid Protocol %s ", rule.Protocol)
 			newRules = append(newRules, rule)
 			continue
 		}
@@ -417,7 +417,7 @@ func getAzureBackendPoolIP(azlb *network.LoadBalancer) (networkInterfaceIDSet, e
 		id := to.String(config.ID)
 		ipConfigID, err := getIPIDFromIPConfig(id)
 		if err != nil {
-			log.Warnf("get networkinterface failed")
+			log.Warningf("get networkinterface failed")
 			continue
 		}
 		azBackendPoolIPIDMap[ipConfigID] = struct{}{}

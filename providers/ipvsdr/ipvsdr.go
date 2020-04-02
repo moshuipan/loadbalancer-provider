@@ -31,10 +31,10 @@ import (
 	"github.com/caicloud/loadbalancer-provider/core/pkg/sysctl"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
-	log "github.com/zoumo/logdog"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
+	log "k8s.io/klog"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
 	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/iptables"
@@ -289,7 +289,7 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 
 	annIPs, updated, e := p.registerNodeNetwork(lb, nns)
 	if updated || e != nil {
-		log.Warnf("Give up this change. annotation updated: %v, err: %v", updated, e)
+		log.Warningf("Give up this change. annotation updated: %v, err: %v", updated, e)
 		if k8serrors.IsConflict(e) {
 			// consider current handler finishes successfully, because another change event is on the way
 			e = nil
@@ -361,7 +361,7 @@ func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors all
 	}
 
 	if len(nodes) > len(nodeIPs) {
-		log.Warnf("Not all node network are retrieved: %d > %d", len(nodes), len(nodeIPs))
+		log.Warningf("Not all node network are retrieved: %d > %d", len(nodes), len(nodeIPs))
 	}
 
 	state := "BACKUP"
@@ -452,7 +452,7 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 
 	for _, spec := range ipvs.Slaves {
 		if spec.HAMode != lbapi.ActivePassiveHA {
-			log.Warnf("skip one slave provider %v because ActiveActive Mode is only supported for ipvs now", spec.VIPs)
+			log.Warningf("skip one slave provider %v because ActiveActive Mode is only supported for ipvs now", spec.VIPs)
 			// if want to support multple ActiveActive providers, acceptMark should be better designed.
 			continue
 		}
@@ -460,7 +460,7 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 		vrrid = vrrid + 1
 		vis2, vss2, err := p.getKeepalivedConfigBlock(nodes, nodeNetSelectors, allNodeIPs, &spec, prority, vrrid)
 		if err != nil {
-			log.Warnf("Skip getKeepalivedConfigBlock for keepalived provider %v", err)
+			log.Warningf("Skip getKeepalivedConfigBlock for keepalived provider %v", err)
 			continue
 		}
 		vis = append(vis, vis2...)
@@ -473,14 +473,14 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 	// check md5
 	md5, err := checksum(keepalivedCfg)
 	if err == nil && md5 == p.cfgMD5 {
-		log.Warn("md5 is not changed", log.Fields{"md5.old": p.cfgMD5, "md5.new": md5})
+		log.Warning("md5 is not changed", "md5.old:", p.cfgMD5, "md5.new:", md5)
 		return nil
 	}
 
 	p.cfgMD5 = md5
 	err = p.keepalived.Reload()
 	if err != nil {
-		log.Error("reload keepalived error", log.Fields{"err": err})
+		log.Errorf("reload keepalived error: %v", err)
 		return err
 	}
 
@@ -511,7 +511,7 @@ func (p *Provider) Stop() error {
 
 	err := p.resetSysctl()
 	if err != nil {
-		log.Error("reset sysctl error", log.Fields{"err": err})
+		log.Errorf("reset sysctl error: %v", err)
 	}
 
 	p.deleteChain()
@@ -565,7 +565,7 @@ func (p *Provider) ensureChain() {
 }
 
 func (p *Provider) flushChain() {
-	log.Info("flush iptables rules", log.Fields{"table": tableMangle, "chain": iptablesChain})
+	log.Info("flush iptables rules", "table:", tableMangle, "chain:", iptablesChain)
 	_ = p.ipt.FlushChain(tableMangle, iptables.Chain(iptablesChain))
 	_ = p.ip6t.FlushChain(tableMangle, iptables.Chain(iptablesChain))
 
@@ -600,7 +600,7 @@ func (p *Provider) changeSysctl() error {
 
 // resetSysctl resets the network setting
 func (p *Provider) resetSysctl() error {
-	log.Info("reset sysctl to original value", log.Fields{"defaults": p.sysctlDefault})
+	log.Info("reset sysctl to original value", "defaults:", p.sysctlDefault)
 	_, err := sysctl.BulkModify(p.sysctlDefault)
 	return err
 }
@@ -657,7 +657,7 @@ func (p *Provider) onUpdateIPtables(lb *lbapi.LoadBalancer, nodeNetSelectors all
 	}
 
 	if len(nodes) > len(nodeIPs) {
-		log.Warnf("Not all node network are retrieved: %d > %d", len(nodes), len(nodeIPs))
+		log.Warningf("Not all node network are retrieved: %d > %d", len(nodes), len(nodeIPs))
 	}
 
 	// flush all rules
@@ -725,13 +725,13 @@ func (p *Provider) ensureIptablesMark(vip, iface string, nodeIPs ifacePreferredN
 	if len(tcpPorts) > 0 {
 		_, err := p.prependIptablesMark(ip, "tcp", iface, acceptMark, mac, tcpPorts)
 		if err != nil {
-			log.Error("error ensure iptables tcp rule for", log.Fields{"tcpPorts": tcpPorts, "err": err})
+			log.Error("error ensure iptables tcp rule for", "tcpPorts:", tcpPorts, "err:", err)
 		}
 	}
 	if len(udpPorts) > 0 {
 		_, err := p.prependIptablesMark(ip, "udp", iface, acceptMark, mac, udpPorts)
 		if err != nil {
-			log.Error("error ensure iptables udp rule for", log.Fields{"udpPorts": udpPorts, "err": err})
+			log.Error("error ensure iptables udp rule for", "udpPorts:", udpPorts, "err:", err)
 		}
 	}
 }
