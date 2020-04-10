@@ -17,17 +17,15 @@ limitations under the License.
 package ipvsdr
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
-	lbapi2 "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	"github.com/caicloud/loadbalancer-provider/core/pkg/sysctl"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
@@ -41,10 +39,9 @@ import (
 )
 
 const (
-	tableFilter           = "filter"
-	tableMangle           = "mangle"
-	iptablesOutputChain   = "LOADBALANCER-IPVS-DR-OUTPUT"
-	networkInfoAnnotation = "loadbalance.caicloud.io/node-net"
+	tableFilter         = "filter"
+	tableMangle         = "mangle"
+	iptablesOutputChain = "LOADBALANCER-IPVS-DR-OUTPUT"
 )
 
 var _ core.Provider = &Provider{}
@@ -139,56 +136,50 @@ func (p *Provider) getNodeNetSelector(nodeNetSelectors allNodeNetSelector, nodeN
 }
 
 func (p *Provider) registerNodeNetwork(lb *lbapi.LoadBalancer, nns *nodeNetSelector) (allNodeIfaceNetList, bool, error) {
-	allNodeIfaceNets := make(allNodeIfaceNetList)
 	var updated bool
 
-	myCurrentIPs, err := getCurrentNodeIfaceIPs(nns)
+	myNodeStatus, err := getCurrentNodeIfaceIPs(p.nodeName, nns)
 	if err != nil {
 		log.Errorf("Failed to getCurrentNodeIfaceIPs %v", err)
 		return nil, updated, err
 	}
 
-	if lb.Annotations != nil {
-		if v, ok := lb.Annotations[networkInfoAnnotation]; ok {
-			if e := json.Unmarshal([]byte(v), &allNodeIfaceNets); e != nil {
-				log.Errorf("Failed to unmarshal lb %s ips from ann %s", lb.Name, v)
-			}
-		}
-	} else {
-		lb.Annotations = make(map[string]string)
-	}
+	allNodeIfaceNets := make(allNodeIfaceNetList)
+	allNodeIfaceNets[p.nodeName] = myNodeStatus
+
+	old := lb.Status.NodeStatuses
+	new := lbapi.NodeStatuses{}
 
 	keys := []string{p.nodeName}
-	newAllNodeIfaceNets := make(allNodeIfaceNetList)
 	for _, n := range lb.Spec.Nodes.Names {
 		if n == p.nodeName {
-			newAllNodeIfaceNets[n] = myCurrentIPs
+			new.Nodes = append(new.Nodes, *myNodeStatus)
 			continue
 		}
-		if v, ok := allNodeIfaceNets[n]; ok {
-			newAllNodeIfaceNets[n] = v
-			keys = append(keys, n)
+		for idx, v := range old.Nodes {
+			if n == v.Name {
+				new.Nodes = append(new.Nodes, old.Nodes[idx])
+				allNodeIfaceNets[n] = &old.Nodes[idx]
+				keys = append(keys, n)
+				break
+			}
 		}
 	}
 
-	if reflect.DeepEqual(allNodeIfaceNets, newAllNodeIfaceNets) {
-		log.Infof("%s: unchange node info, old: %v", lb.Name, keys)
+	if reflect.DeepEqual(old, new) {
+		log.Infof("no node status changes. nodes: %v", keys)
 		return allNodeIfaceNets, updated, nil
 	}
 
 	updated = true
 
-	log.Infof("%s: change %d->%d/%d node ready: %v", p.nodeName, len(allNodeIfaceNets), len(newAllNodeIfaceNets), len(lb.Spec.Nodes.Names), keys)
-	bs, err := json.Marshal(&newAllNodeIfaceNets)
-	if err != nil {
-		log.Errorf("Failed to marshal %v", newAllNodeIfaceNets)
-		return nil, updated, err
-	}
-	lb.Annotations[networkInfoAnnotation] = string(bs)
+	log.Infof("%s: %d->%d/%d nodes change. ready: %v", p.nodeName, len(old.Nodes), len(new.Nodes), len(lb.Spec.Nodes.Names), keys)
+
+	lb.Status.NodeStatuses = new
 
 	_, err = p.storeLister.KubeClient.LoadbalanceV1alpha2().LoadBalancers(lb.Namespace).Update(lb)
 	if err != nil {
-		log.Warningf("Failed to update lb %s ann: %v", lb.Name, err)
+		log.Warningf("Failed to update lb %s, error: %v", lb.Name, err)
 	}
 
 	return nil, updated, err
@@ -199,7 +190,7 @@ func (p *Provider) isLBChanged(new *lbapi.LoadBalancer) bool {
 	equal := old != nil &&
 		reflect.DeepEqual(old.Spec.Nodes, new.Spec.Nodes) &&
 		reflect.DeepEqual(old.Spec.Providers.Ipvsdr, new.Spec.Providers.Ipvsdr) &&
-		reflect.DeepEqual(old.Annotations, new.Annotations) &&
+		reflect.DeepEqual(old.Status.NodeStatuses, new.Status.NodeStatuses) &&
 		reflect.DeepEqual(old.Status.ProxyStatus.TCPConfigMap, new.Status.ProxyStatus.TCPConfigMap) &&
 		reflect.DeepEqual(old.Status.ProxyStatus.UDPConfigMap, new.Status.ProxyStatus.UDPConfigMap) &&
 		reflect.DeepEqual(old.DeletionTimestamp, new.DeletionTimestamp)
@@ -261,7 +252,7 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 	p.reloadRateLimiter.Accept()
 
 	if err = p.validate(lb); err != nil {
-		log.Errorf("%v", err)
+		log.Errorf("invalid loadbalancer: %v, err: %v", lb.Spec, err)
 		return nil
 	}
 
@@ -287,9 +278,9 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 		return err
 	}
 
-	annIPs, updated, e := p.registerNodeNetwork(lb, nns)
+	allNodeIPs, updated, e := p.registerNodeNetwork(lb, nns)
 	if updated || e != nil {
-		log.Warnf("Give up this change. annotation updated: %v, err: %v", updated, e)
+		log.Warnf("Give up this change event. nodeStatus updated: %v, err: %v", updated, e)
 		if k8serrors.IsConflict(e) {
 			// consider current handler finishes successfully, because another change event is on the way
 			e = nil
@@ -299,12 +290,12 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 
 	//TODO: try to wait for other node
 
-	log.Info("IPVS: OnUpdating")
+	log.Info("IPVS: updating network config on host")
 
 	for _, node := range lb.Spec.Nodes.Names {
 		_, err = p.getNodeNetSelector(nodeNetSelectors, node, binds)
 		if err != nil {
-			log.Errorf("Error %v when get node bind for %s", err, node)
+			log.Errorf("Failed to get bind on node %s, error: %v", node, err)
 			return err
 		}
 	}
@@ -319,14 +310,14 @@ func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 		}
 	}
 	if lbChange || listenPortChange {
-		err = p.onUpdateIPtables(lb, nodeNetSelectors, annIPs, tcps, udps)
+		err = p.onUpdateIPtables(lb, nodeNetSelectors, allNodeIPs, tcps, udps)
 		if err != nil {
 			return err
 		}
 	}
 
 	if lbChange {
-		err = p.onUpdateKeepalived(lb, nodeNetSelectors, annIPs)
+		err = p.onUpdateKeepalived(lb, nodeNetSelectors, allNodeIPs)
 		if err != nil {
 			return err
 		}
@@ -346,12 +337,17 @@ func getVIPs(kl *lbapi.KeepalivedProvider) []string {
 	return []string{kl.VIP}
 }
 
-func (p *Provider) getIPs(nodes []string, allbinds allNodeNetSelector, allNodeIPs allNodeIfaceNetList, bind *lbapi2.KeepalivedBind) (*ifacePreferredNet, ifacePreferredNetList) {
+func (p *Provider) getIPs(nodes []string, allbinds allNodeNetSelector, allNodeIPs allNodeIfaceNetList, bind *lbapi.KeepalivedBind) (*ifacePreferredNet, ifacePreferredNetList) {
 	var myIface *ifacePreferredNet
 	nodeIPs := ifacePreferredNetList{}
 
 	for _, node := range nodes {
-		nodeIface := getNodeNetwork(allbinds[node], allNodeIPs[node], bind)
+		oneNodeIPs, exists := allNodeIPs[node]
+		if !exists {
+			continue
+		}
+
+		nodeIface := getNodeNetwork(allbinds[node], oneNodeIPs.IfaceNetList, bind)
 		if nodeIface != nil {
 			nodeIPs = append(nodeIPs, nodeIface)
 		}
@@ -362,7 +358,7 @@ func (p *Provider) getIPs(nodes []string, allbinds allNodeNetSelector, allNodeIP
 	return myIface, nodeIPs
 }
 
-func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors allNodeNetSelector, allNodeIPs allNodeIfaceNetList, kl *lbapi2.KeepalivedProvider, priority, vrid int) ([]*vrrpInstance, []*virtualServer, error) {
+func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors allNodeNetSelector, allNodeIPs allNodeIfaceNetList, kl *lbapi.KeepalivedProvider, priority, vrid int) ([]*vrrpInstance, []*virtualServer, error) {
 
 	myIface, nodeIPs := p.getIPs(nodes, nodeNetSelectors, allNodeIPs, kl.Bind)
 
@@ -371,11 +367,11 @@ func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors all
 	}
 
 	if len(nodes) > len(nodeIPs) {
-		log.Warnf("Not all node network are retrieved: %d > %d", len(nodes), len(nodeIPs))
+		log.Warnf("Not all node network are ready: (%d/%d) %v", len(nodeIPs), len(nodes), nodeIPs)
 	}
 
 	state := "BACKUP"
-	if kl.HAMode == lbapi2.ActivePassiveHA {
+	if kl.HAMode == lbapi.ActivePassiveHA {
 		if nodes[len(nodes)-1] == p.nodeName {
 			state = "MASTER"
 		}
@@ -402,9 +398,9 @@ func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors all
 			continue
 		}
 
+		//TODO
 		name := myIface.Name + "_" + ipVersion
-		name = strings.Replace(name, ".", "_", -1)
-		name = strings.Replace(name, "-", "_", -1)
+		name = string(regexp.MustCompile(`\W`).ReplaceAll([]byte(name), []byte("_")))
 
 		var allIPs []string
 		for i, iface := range nodeIPs {
@@ -428,7 +424,7 @@ func (p *Provider) getKeepalivedConfigBlock(nodes []string, nodeNetSelectors all
 		}
 		vis = append(vis, vi)
 
-		if kl.HAMode != lbapi2.ActivePassiveHA {
+		if kl.HAMode != lbapi.ActivePassiveHA {
 			vs := &virtualServer{
 				AcceptMark: acceptMark,
 				VIP:        vip,
@@ -448,7 +444,7 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 	sort.Strings(nodes)
 
 	vrrid := 110
-	if lb.Status.ProvidersStatuses.Ipvsdr.Vrid != nil {
+	if lb.Status.ProvidersStatuses.Ipvsdr != nil && lb.Status.ProvidersStatuses.Ipvsdr.Vrid != nil {
 		vrrid = *lb.Status.ProvidersStatuses.Ipvsdr.Vrid
 	}
 	ipvs := lb.Spec.Providers.Ipvsdr
@@ -493,6 +489,7 @@ func (p *Provider) onUpdateKeepalived(lb *lbapi.LoadBalancer, nodeNetSelectors a
 		log.Error("reload keepalived error", log.Fields{"err": err})
 		return err
 	}
+	log.Infof("IPVS: keepalived reload, conf md5: %s", p.cfgMD5)
 
 	return nil
 }
