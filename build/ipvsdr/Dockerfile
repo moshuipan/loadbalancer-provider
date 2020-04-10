@@ -1,4 +1,4 @@
-FROM cargo.caicloud.xyz/devops_release/lvs:alpine3.7-1
+FROM cargo.caicloud.xyz/release/lvs:alpine3.7-1
 # Consider fully before changing the base image:
 # Changing the distribution or version of iptables/keepalived in base image may cause compatibility problem.
 
