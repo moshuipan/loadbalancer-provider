@@ -21,7 +21,6 @@ import (
 	"sort"
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
-	lbapi2 "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	log "k8s.io/klog"
 )
 
@@ -33,22 +32,15 @@ type nodeNetSelector struct {
 
 type allNodeNetSelector map[string]*nodeNetSelector
 
-type ifaceNet struct {
-	Name string   `json:"name"`
-	Mac  string   `json:"mac"`
-	IPs  []string `json:"ips,omitempty"`
-}
-
-type ifaceNetList []*ifaceNet
-type allNodeIfaceNetList map[string]ifaceNetList
+type allNodeIfaceNetList map[string]*lbapi.NodeStatus
 
 type ifacePreferredNet struct {
-	*ifaceNet
+	*lbapi.InterfaceNet
 	preferredIP string
 }
 type ifacePreferredNetList []*ifacePreferredNet
 
-func (nns *nodeNetSelector) selectIface(iface *net.Interface, addrs []net.Addr) *ifaceNet {
+func (nns *nodeNetSelector) selectIface(iface *net.Interface, addrs []net.Addr) *lbapi.InterfaceNet {
 	_, selected := nns.ifaces[iface.Name]
 
 	ips := []string{}
@@ -72,7 +64,7 @@ func (nns *nodeNetSelector) selectIface(iface *net.Interface, addrs []net.Addr) 
 
 	if selected {
 		sort.Strings(ips)
-		i := &ifaceNet{
+		i := &lbapi.InterfaceNet{
 			Name: iface.Name,
 			Mac:  iface.HardwareAddr.String(),
 			IPs:  ips,
@@ -94,10 +86,11 @@ func (p *ifacePreferredNet) getIP(ipVersion string) string {
 	return ""
 }
 
-func getCurrentNodeIfaceIPs(nns *nodeNetSelector) (ifaceNetList, error) {
-	res := ifaceNetList{}
+func getCurrentNodeIfaceIPs(nodeName string, nns *nodeNetSelector) (*lbapi.NodeStatus, error) {
+	res := &lbapi.NodeStatus{Name: nodeName}
 	ifaces, err := net.Interfaces()
 	if err != nil {
+		log.Errorf("Failed to list ifaces error: %v", err)
 		return res, err
 	}
 	for _, iface := range ifaces {
@@ -109,17 +102,17 @@ func getCurrentNodeIfaceIPs(nns *nodeNetSelector) (ifaceNetList, error) {
 		}
 		addrs, err := iface.Addrs()
 		if err != nil {
-			log.Errorf("Failed to list address on iface %s", iface.Name)
+			log.Errorf("Failed to list address on iface %s, error: %v", iface.Name, err)
 			continue
 		}
 
 		i := nns.selectIface(&iface, addrs)
 		if i != nil {
-			res = append(res, i)
+			res.IfaceNetList = append(res.IfaceNetList, i)
 		}
 	}
-	sort.Slice(res, func(a, b int) bool {
-		return res[a].Name < res[b].Name
+	sort.Slice(res.IfaceNetList, func(a, b int) bool {
+		return res.IfaceNetList[a].Name < res.IfaceNetList[b].Name
 	})
 
 	return res, nil
@@ -138,7 +131,7 @@ func getAllBinds(p *lbapi.IpvsdrProvider) []*lbapi.KeepalivedBind {
 	return binds
 }
 
-func getNodeNetwork(nns *nodeNetSelector, ips ifaceNetList, bind *lbapi2.KeepalivedBind) *ifacePreferredNet {
+func getNodeNetwork(nns *nodeNetSelector, ips []*lbapi.InterfaceNet, bind *lbapi.KeepalivedBind) *ifacePreferredNet {
 	bindIface := ""
 	preferredIP := nns.k8sNodeIP
 	if bind != nil {
@@ -150,7 +143,7 @@ func getNodeNetwork(nns *nodeNetSelector, ips ifaceNetList, bind *lbapi2.Keepali
 	if bindIface != "" {
 		for _, iface := range ips {
 			if bind.Iface == iface.Name {
-				n.ifaceNet = iface
+				n.InterfaceNet = iface
 				break
 			}
 		}
@@ -158,7 +151,7 @@ func getNodeNetwork(nns *nodeNetSelector, ips ifaceNetList, bind *lbapi2.Keepali
 		for _, iface := range ips {
 			for _, ip := range iface.IPs {
 				if ip == preferredIP {
-					n.ifaceNet = iface
+					n.InterfaceNet = iface
 					n.preferredIP = ip
 					return n
 				}
@@ -166,8 +159,8 @@ func getNodeNetwork(nns *nodeNetSelector, ips ifaceNetList, bind *lbapi2.Keepali
 		}
 	}
 
-	if n.ifaceNet != nil {
-		for _, ip := range n.ifaceNet.IPs {
+	if n.InterfaceNet != nil {
+		for _, ip := range n.InterfaceNet.IPs {
 			if ip == preferredIP {
 				n.preferredIP = ip
 				break
