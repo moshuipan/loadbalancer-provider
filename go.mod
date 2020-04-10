@@ -8,7 +8,7 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/auth v0.4.2
 	github.com/Azure/go-autorest/autorest/to v0.3.0
 	github.com/Azure/go-autorest/autorest/validation v0.2.0 // indirect
-	github.com/caicloud/clientset v0.0.0-20200311021253-e5f43fda7589 // release-2.11
+	github.com/caicloud/clientset v0.0.0-20200408065619-9c56d7d22747
 	github.com/caicloud/go-common v0.3.0
 	github.com/godbus/dbus v4.1.0+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
