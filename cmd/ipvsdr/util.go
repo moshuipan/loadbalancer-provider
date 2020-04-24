@@ -21,7 +21,7 @@ import (
 
 	log "k8s.io/klog"
 
-	k8sexec "k8s.io/kubernetes/pkg/util/exec"
+	k8sexec "k8s.io/utils/exec"
 )
 
 // loadIPVSModule load module require to use keepalived

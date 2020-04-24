@@ -23,9 +23,8 @@ import (
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	log "k8s.io/klog"
 
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
-	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/iptables"
+	k8sexec "k8s.io/utils/exec"
 )
 
 const (
@@ -80,8 +79,7 @@ type Sidecar struct {
 // NewIngressSidecar creates a new ingress sidecar
 func NewIngressSidecar(lb *lbapi.LoadBalancer) (*Sidecar, error) {
 	execer := k8sexec.New()
-	dbus := utildbus.New()
-	iptInterface := iptables.New(execer, dbus, iptables.ProtocolIpv4)
+	iptInterface := iptables.New(execer, iptables.ProtocolIpv4)
 
 	sidecar := &Sidecar{
 		sysctlDefault: make(map[string]string),

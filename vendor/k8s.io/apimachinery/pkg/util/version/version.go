@@ -121,9 +121,74 @@ func MustParseSemantic(str string) *Version {
 	return v
 }
 
+// Major returns the major release number
+func (v *Version) Major() uint {
+	return v.components[0]
+}
+
+// Minor returns the minor release number
+func (v *Version) Minor() uint {
+	return v.components[1]
+}
+
+// Patch returns the patch release number if v is a Semantic Version, or 0
+func (v *Version) Patch() uint {
+	if len(v.components) < 3 {
+		return 0
+	}
+	return v.components[2]
+}
+
 // BuildMetadata returns the build metadata, if v is a Semantic Version, or ""
 func (v *Version) BuildMetadata() string {
 	return v.buildMetadata
+}
+
+// PreRelease returns the prerelease metadata, if v is a Semantic Version, or ""
+func (v *Version) PreRelease() string {
+	return v.preRelease
+}
+
+// Components returns the version number components
+func (v *Version) Components() []uint {
+	return v.components
+}
+
+// WithMajor returns copy of the version object with requested major number
+func (v *Version) WithMajor(major uint) *Version {
+	result := *v
+	result.components = []uint{major, v.Minor(), v.Patch()}
+	return &result
+}
+
+// WithMinor returns copy of the version object with requested minor number
+func (v *Version) WithMinor(minor uint) *Version {
+	result := *v
+	result.components = []uint{v.Major(), minor, v.Patch()}
+	return &result
+}
+
+// WithPatch returns copy of the version object with requested patch number
+func (v *Version) WithPatch(patch uint) *Version {
+	result := *v
+	result.components = []uint{v.Major(), v.Minor(), patch}
+	return &result
+}
+
+// WithPreRelease returns copy of the version object with requested prerelease
+func (v *Version) WithPreRelease(preRelease string) *Version {
+	result := *v
+	result.components = []uint{v.Major(), v.Minor(), v.Patch()}
+	result.preRelease = preRelease
+	return &result
+}
+
+// WithBuildMetadata returns copy of the version object with requested buildMetadata
+func (v *Version) WithBuildMetadata(buildMetadata string) *Version {
+	result := *v
+	result.components = []uint{v.Major(), v.Minor(), v.Patch()}
+	result.buildMetadata = buildMetadata
+	return &result
 }
 
 // String converts a Version back to a string; note that for versions parsed with
@@ -153,17 +218,24 @@ func (v *Version) String() string {
 // compareInternal returns -1 if v is less than other, 1 if it is greater than other, or 0
 // if they are equal
 func (v *Version) compareInternal(other *Version) int {
-	for i := range v.components {
+
+	vLen := len(v.components)
+	oLen := len(other.components)
+	for i := 0; i < vLen && i < oLen; i++ {
 		switch {
-		case i >= len(other.components):
-			if v.components[i] != 0 {
-				return 1
-			}
 		case other.components[i] < v.components[i]:
 			return 1
 		case other.components[i] > v.components[i]:
 			return -1
 		}
+	}
+
+	// If components are common but one has more items and they are not zeros, it is bigger
+	switch {
+	case oLen < vLen && !onlyZeros(v.components[oLen:]):
+		return 1
+	case oLen > vLen && !onlyZeros(other.components[vLen:]):
+		return -1
 	}
 
 	if !v.semver || !other.semver {
@@ -181,10 +253,7 @@ func (v *Version) compareInternal(other *Version) int {
 
 	vPR := strings.Split(v.preRelease, ".")
 	oPR := strings.Split(other.preRelease, ".")
-	for i := range vPR {
-		if i >= len(oPR) {
-			return 1
-		}
+	for i := 0; i < len(vPR) && i < len(oPR); i++ {
 		vNum, err := strconv.ParseUint(vPR[i], 10, 0)
 		if err == nil {
 			oNum, err := strconv.ParseUint(oPR[i], 10, 0)
@@ -206,7 +275,24 @@ func (v *Version) compareInternal(other *Version) int {
 		}
 	}
 
+	switch {
+	case len(oPR) < len(vPR):
+		return 1
+	case len(oPR) > len(vPR):
+		return -1
+	}
+
 	return 0
+}
+
+// returns false if array contain any non-zero element
+func onlyZeros(array []uint) bool {
+	for _, num := range array {
+		if num != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // AtLeast tests if a version is at least equal to a given minimum version. If both

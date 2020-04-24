@@ -33,9 +33,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
 	log "k8s.io/klog"
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
-	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/iptables"
+	k8sexec "k8s.io/utils/exec"
 )
 
 const (
@@ -85,15 +84,14 @@ type Provider struct {
 func NewIpvsdrProvider(nodeName string) (*Provider, error) {
 
 	execer := k8sexec.New()
-	dbus := utildbus.New()
 
 	ipvs := &Provider{
 		nodeName:          nodeName,
 		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(10.0, 10),
 		keepalived:        &keepalived{},
 		sysctlDefault:     make(map[string]string),
-		ipt:               iptables.New(execer, dbus, iptables.ProtocolIpv4),
-		ip6t:              iptables.New(execer, dbus, iptables.ProtocolIpv6),
+		ipt:               iptables.New(execer, iptables.ProtocolIpv4),
+		ip6t:              iptables.New(execer, iptables.ProtocolIpv6),
 	}
 
 	err := ipvs.keepalived.loadTemplate()
