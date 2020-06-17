@@ -111,16 +111,19 @@ func (l *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 	if agStatus != "" && agStatus != StatusSuccess && agStatus != StatusError &&
 		(lb.Annotations[AppGatewayName] != l.oldAppGateway || !reflect.DeepEqual(l.nodes, lb.Spec.Nodes.Names)) {
 		if err := l.updateAzureAppGateway(nlb); err != nil {
+			log.Errorf("failed to updateAzureAppGateway: %v", err)
 			return err
 		}
 	}
 
 	ing, err := l.filterIngress(lb)
 	if err != nil {
+		log.Errorf("failed to filterIngress: %v", err)
 		return err
 	}
 	if len(ing) != l.ingressesNum && lb.Annotations[AppGateway] == trueString {
 		if err := l.updateIngress(ing, nlb, nil); err != nil {
+			log.Errorf("failed to updateIngress %v -> %v: %v", l.ingressesNum, len(ing), err)
 			return err
 		}
 	}
@@ -128,10 +131,13 @@ func (l *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
 		fing := l.filterFinalizerIngress(ing)
 		if fing != nil {
 			if err := l.updateIngress(ing, nlb, fing); err != nil {
+				log.Errorf("failed to updateIngress finalizer ingress %v: %v", fing.Name, err)
 				return err
 			}
 		}
 	}
+
+	log.Infof("updating azure lb %v", lb.Spec.Providers.Azure)
 
 	if lb.Spec.Providers.Azure == nil {
 		return l.cleanupAzureLB(nil, false)
@@ -371,6 +377,7 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 			rStatus[deleteIngress.Name] = StatusError
 			rMsg[deleteIngress.Name] = fmt.Sprintf(OneRuleMsg, deleteIngress.Name)
 			if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+				log.Errorf("updateIngress: patch rule status failed %v", err)
 				return err
 			}
 			return nil
@@ -385,12 +392,14 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 			delete(rStatus, deleteIngress.Name)
 			delete(rMsg, deleteIngress.Name)
 			if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+				log.Errorf("updateIngress: patch rule status failed %v", err)
 				return err
 			}
 			return nil
 		}
 		rStatus[deleteIngress.Name] = StatusDeleting
 		if err := l.patchLBAnnotations(lb, rStatus, nil); err != nil {
+			log.Errorf("updateIngress: patch rule status failed %v", err)
 			return err
 		}
 
@@ -399,6 +408,7 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 			rStatus[deleteIngress.Name] = StatusError
 			rMsg[deleteIngress.Name] = strings.Replace(err.Error(), "\"", "'", -1)
 			if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+				log.Errorf("updateIngress: patch rule status failed %v", err)
 				return err
 			}
 			return err
@@ -412,6 +422,7 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 		delete(rStatus, deleteIngress.Name)
 		delete(rMsg, deleteIngress.Name)
 		if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+			log.Errorf("updateIngress: patch rule status failed %v", err)
 			return err
 		}
 		l.setCacheAzureingressesNum(l.ingressesNum - 1)
@@ -431,8 +442,9 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 	for _, ing := range ingress {
 		if _, ok := ruleSet[getAGRuleName(ing.Name)]; !ok {
 			log.Infof("adding ingress %s in azure", ing.Name)
-			rStatus[ing.Name] = "Adding"
+			rStatus[ing.Name] = StatusAdding
 			if err := l.patchLBAnnotations(lb, rStatus, nil); err != nil {
+				log.Errorf("updateIngress: patch rule 'Adding' status failed %v", err)
 				return err
 			}
 
@@ -441,6 +453,7 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 				rStatus[ing.Name] = StatusError
 				rMsg[ing.Name] = strings.Replace(err.Error(), "\"", "'", -1)
 				if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+					log.Errorf("updateIngress: patch rule 'error' status failed %v", err)
 					return err
 				}
 
@@ -450,6 +463,7 @@ func (l *Provider) updateIngress(ingress []*v1beta1.Ingress, lb *lbapi.LoadBalan
 			rStatus[ing.Name] = StatusSuccess
 			rMsg[ing.Name] = ""
 			if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+				log.Errorf("updateIngress: patch rule 'ok' status failed %v", err)
 				return err
 			}
 
@@ -571,6 +585,7 @@ func getAnnotationPatch(lb *lbapi.LoadBalancer) string {
 }
 
 func (l *Provider) patchLBAnnotations(lb *lbapi.LoadBalancer, rStatus, rMsg map[string]string) error {
+	log.Infof("patchLBAnnotations: patch rule status: %v, msg: %v", rStatus, rMsg)
 	if rStatus != nil {
 		mjson, _ := json.Marshal(rStatus)
 		lb.Annotations[RuleStatus] = string(mjson)
@@ -713,6 +728,7 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		return err
 	}
 
+	// delete app-gateway
 	if lb.ObjectMeta.Annotations[AppGateway] == "false" && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusDeleting {
 		err := l.deleteAzureAppGateway(lb)
 		return err
@@ -730,21 +746,27 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		})
 	}
 
+	// handle change app-gateway
 	if l.oldAppGateway != lb.ObjectMeta.Annotations[AppGatewayName] && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusUpdating {
 		err := l.deleteAzureAppGateway(lb)
 		if err != nil {
 			return err
 		}
 		err = l.addAzureAppGateway(lb, nodeip, true)
+		if err != nil {
+			log.Errorf("failed to handle app-gateway updating(add): %v", err)
+		}
 		return err
 	}
 
+	// handle change lb nodes
 	if !reflect.DeepEqual(l.nodes, lb.Spec.Nodes.Names) && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusUpdating {
 		err = updateAppGatewayBackendPoolIP(c, nodeip, lb.ObjectMeta.Annotations[ResourceGroup], lb.ObjectMeta.Annotations[AppGatewayName], lb.Name)
 		if err != nil {
 			lb.Annotations[BackendpoolStatus] = StatusError
 			lb.Annotations[ErrorMsg] = strings.Replace(err.Error(), "\"", "'", -1)
 			if err := l.patchLBAnnotations(lb, nil, nil); err != nil {
+				log.Errorf("updateAzureAppGateway: patch app-gatway 'error' status failed %v", err)
 				return err
 			}
 			return err
@@ -753,6 +775,7 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		lb.Annotations[BackendpoolStatus] = StatusSuccess
 		lb.Annotations[ErrorMsg] = ""
 		if err := l.patchLBAnnotations(lb, nil, nil); err != nil {
+			log.Errorf("deleteAzureAppGateway: patch app-gateway 'ok' status failed %v", err)
 			return err
 		}
 
@@ -771,6 +794,8 @@ func (l *Provider) deleteAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		log.Errorf("init client error %v", err)
 		return err
 	}
+	log.Infof("deleting AzureGateway, old: %s/%s, cur: %s/%s ",
+		l.oldResourceGroup, l.oldAppGateway, lb.Annotations[ResourceGroup], lb.Annotations[AppGatewayName])
 
 	rStatus, rMsg, err := convertMap(lb.Annotations[RuleStatus], lb.Annotations[RuleMsg])
 	if err != nil {
@@ -782,6 +807,7 @@ func (l *Provider) deleteAzureAppGateway(lb *lbapi.LoadBalancer) error {
 			rStatus[k] = StatusDeleting
 		}
 		if err := l.patchLBAnnotations(lb, rStatus, nil); err != nil {
+			log.Errorf("updateAzureAppGateway: patch rule-deleting status failed %v", err)
 			return err
 		}
 	}
@@ -804,6 +830,7 @@ func (l *Provider) deleteAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		}
 
 		if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+			log.Errorf("deleteAzureAppGateway: patch rule-error status failed %v", err)
 			return err
 		}
 		return err
@@ -817,6 +844,7 @@ func (l *Provider) deleteAzureAppGateway(lb *lbapi.LoadBalancer) error {
 		delete(rMsg, k)
 	}
 	if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+		log.Errorf("deleteAzureAppGateway: patch empty app-gateway status failed %v", err)
 		return err
 	}
 
@@ -836,10 +864,14 @@ func (l *Provider) addAzureAppGateway(lb *lbapi.LoadBalancer, nodeip []network.A
 		return err
 	}
 
+	log.Infof("adding AzureGateway, update: %v, old: %s/%s, cur: %s/%s ", update,
+		l.oldResourceGroup, l.oldAppGateway, lb.Annotations[ResourceGroup], lb.Annotations[AppGatewayName])
+
 	if update {
 		lb.Annotations[BackendpoolStatus] = StatusUpdating
 		lb.Annotations[AppGateway] = trueString
 		if err := l.patchLBAnnotations(lb, nil, nil); err != nil {
+			log.Errorf("addAzureAppGateway: patch app-gateway 'Updating' status failed %v", err)
 			return err
 		}
 	}
@@ -859,9 +891,10 @@ func (l *Provider) addAzureAppGateway(lb *lbapi.LoadBalancer, nodeip []network.A
 			rMsg[ingress.Name] = strings.Replace(err.Error(), "\"", "'", -1)
 		}
 		if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+			log.Errorf("addAzureAppGateway: patch rule-error status failed %v", err)
 			return err
 		}
-		l.setCacheAzureAppGateway(lb.Annotations[AppGatewayName])
+		l.setCacheAzureAppGateway(lb.Annotations[AppGatewayName]) //??
 
 		return err
 	}
@@ -873,6 +906,7 @@ func (l *Provider) addAzureAppGateway(lb *lbapi.LoadBalancer, nodeip []network.A
 		rMsg[ingress.Name] = ""
 	}
 	if err := l.patchLBAnnotations(lb, rStatus, rMsg); err != nil {
+		log.Errorf("addAzureAppGateway: patch app-gateway status failed %v", err)
 		return err
 	}
 

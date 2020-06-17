@@ -26,6 +26,7 @@ const (
 	CompassProbes     = "compass-healthz-probe"
 	StatusSuccess     = "Success"
 	StatusError       = "Error"
+	StatusAdding      = "Adding"
 	StatusDeleting    = "Deleting"
 	StatusUpdating    = "Updating"
 	AzureFrontendPort = 80
@@ -134,6 +135,7 @@ func deleteAppGatewayBackendPool(c *client.Client, groupName, agName, lb, rule s
 				}
 			}
 			if only {
+				log.Errorf("make sure there is at least one rule on app-gateway before unref it, num %v", len(rStatus))
 				return fmt.Errorf(OnlyRuleMsg, agName)
 			}
 		}
