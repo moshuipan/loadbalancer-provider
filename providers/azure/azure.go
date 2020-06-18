@@ -731,6 +731,7 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 	// delete app-gateway
 	if lb.ObjectMeta.Annotations[AppGateway] == "false" && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusDeleting {
 		err := l.deleteAzureAppGateway(lb)
+		log.Errorf("failed to delete app-gateway: %v", err)
 		return err
 	}
 
@@ -750,6 +751,7 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 	if l.oldAppGateway != lb.ObjectMeta.Annotations[AppGatewayName] && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusUpdating {
 		err := l.deleteAzureAppGateway(lb)
 		if err != nil {
+			log.Errorf("failed to handle app-gateway updating(delete): %v", err)
 			return err
 		}
 		err = l.addAzureAppGateway(lb, nodeip, true)
@@ -762,6 +764,7 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 	// handle change lb nodes
 	if !reflect.DeepEqual(l.nodes, lb.Spec.Nodes.Names) && lb.ObjectMeta.Annotations[BackendpoolStatus] == StatusUpdating {
 		err = updateAppGatewayBackendPoolIP(c, nodeip, lb.ObjectMeta.Annotations[ResourceGroup], lb.ObjectMeta.Annotations[AppGatewayName], lb.Name)
+		log.Errorf("failed to updateAppGatewayBackendPoolIP: %v", err)
 		if err != nil {
 			lb.Annotations[BackendpoolStatus] = StatusError
 			lb.Annotations[ErrorMsg] = strings.Replace(err.Error(), "\"", "'", -1)
@@ -784,6 +787,9 @@ func (l *Provider) updateAzureAppGateway(lb *lbapi.LoadBalancer) error {
 	}
 
 	err = l.addAzureAppGateway(lb, nodeip, false)
+	if err != nil {
+		log.Errorf("failed to addAzureAppGateway: %v", err)
+	}
 	return err
 }
 

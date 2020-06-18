@@ -64,12 +64,24 @@ func addAppGatewayBackendPool(c *client.Client, nodeip []network.ApplicationGate
 	if ag.BackendAddressPools == nil {
 		ag.BackendAddressPools = &[]network.ApplicationGatewayBackendAddressPool{}
 	}
-	*ag.BackendAddressPools = append(*ag.BackendAddressPools, network.ApplicationGatewayBackendAddressPool{
-		Name: &poolName,
-		ApplicationGatewayBackendAddressPoolPropertiesFormat: &network.ApplicationGatewayBackendAddressPoolPropertiesFormat{
-			BackendAddresses: &nodeip,
-		},
-	})
+
+	// add new backend pool or overwrite one who has same name
+	foundPool := false
+	for i := range *ag.BackendAddressPools {
+		p := (*ag.BackendAddressPools)[i]
+		if p.Name != nil && *p.Name == poolName {
+			p.BackendAddresses = &nodeip
+			foundPool = true
+		}
+	}
+	if !foundPool {
+		*ag.BackendAddressPools = append(*ag.BackendAddressPools, network.ApplicationGatewayBackendAddressPool{
+			Name: &poolName,
+			ApplicationGatewayBackendAddressPoolPropertiesFormat: &network.ApplicationGatewayBackendAddressPoolPropertiesFormat{
+				BackendAddresses: &nodeip,
+			},
+		})
+	}
 
 	if ingresses != nil {
 		ruleSet := make(map[string]struct{})
