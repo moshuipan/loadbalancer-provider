@@ -270,5 +270,13 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 		return err
 	}
 
+	// make sure the right ConfigMaps cache
+	if p.cfg.TCPConfigMap == "" {
+		p.cfg.TCPConfigMap = lb.Status.ProxyStatus.TCPConfigMap
+	}
+	if p.cfg.UDPConfigMap == "" {
+		p.cfg.UDPConfigMap = lb.Status.ProxyStatus.UDPConfigMap
+	}
+
 	return p.cfg.Backend.OnUpdate(lb)
 }
