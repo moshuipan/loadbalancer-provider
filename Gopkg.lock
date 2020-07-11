@@ -41,8 +41,8 @@
   version = "v11.5.0"
 
 [[projects]]
-  branch = "release-1.12"
-  digest = "1:40b489d0017835c23ded3a08b47c9565c5703229fe1553e9ad825edd4a9977ee"
+  branch = "release-1.12-oem-starbucks"
+  digest = "1:d39e1d2fef7f0bc53a8caa90228c0c6b4953d18781f05b041f85d6dbea9d1b53"
   name = "github.com/caicloud/clientset"
   packages = [
     "informers",
@@ -149,7 +149,7 @@
     "util/syncqueue",
   ]
   pruneopts = "NUT"
-  revision = "5c4075a9e3a7efc0cf2f2041c919f014ac11dc62"
+  revision = "fed379e6eade245c96592e59c60014bf02ad657e"
 
 [[projects]]
   digest = "1:65b0d980b428a6ad4425f2df4cd5410edd81f044cf527bd1c345368444649e58"

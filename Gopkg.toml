@@ -47,7 +47,7 @@
 
 [[constraint]]
   name = "github.com/caicloud/clientset"
-  branch = "release-1.12"
+  branch = "release-1.12-oem-starbucks"
 
 [[override]]
   branch = "master"

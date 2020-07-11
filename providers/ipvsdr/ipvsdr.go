@@ -138,19 +138,24 @@ func (p *IpvsdrProvider) OnUpdate(lb *lbapi.LoadBalancer) error {
 
 	log.Info("IPVS: OnUpdating")
 
-	tcpcm, err := p.storeLister.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.TCPConfigMap)
-	if err != nil {
-		log.Error("can not find tcp configmap for loadbalancer")
-		return err
-	}
+	var err error
+	tcpPorts := []string{}
+	udpPorts := []string{}
+	if lb.Spec.Proxy.Type == lbapi.ProxyTypeNginx {
+		tcpcm, err := p.storeLister.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.TCPConfigMap)
+		if err != nil {
+			log.Error("can not find tcp configmap for loadbalancer")
+			return err
+		}
 
-	udpcm, err := p.storeLister.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.UDPConfigMap)
-	if err != nil {
-		log.Error("can not find udp configmap for loadbalancer")
-		return err
-	}
+		udpcm, err := p.storeLister.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.UDPConfigMap)
+		if err != nil {
+			log.Error("can not find udp configmap for loadbalancer")
+			return err
+		}
 
-	tcpPorts, udpPorts := core.GetExportedPorts(lb, tcpcm, udpcm)
+		tcpPorts, udpPorts = core.GetExportedPorts(lb, tcpcm, udpcm)
+	}
 
 	// get selected nodes' ip
 	if len(lb.Spec.Nodes.Names) == 0 {
