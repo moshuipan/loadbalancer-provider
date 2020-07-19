@@ -312,6 +312,14 @@
   version = "v1.13.0"
 
 [[projects]]
+  branch = "release-11.x"
+  digest = "1:a988f8e38015ac005d77e94d618182e7642021a9b031f8d6220f9374b7d4b956"
+  name = "github.com/hanxueluo/go-bigip"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "881913ab571e65eac1894f50cdaf0f6e7060449c"
+
+[[projects]]
   digest = "1:9676627451831e0d8e347007d871eac494ce51d55b95a3fe1fac30ad8d717ab9"
   name = "github.com/hashicorp/golang-lru"
   packages = [
@@ -1002,11 +1010,11 @@
     "github.com/caicloud/clientset/informers",
     "github.com/caicloud/clientset/kubernetes",
     "github.com/caicloud/clientset/listers/loadbalance/v1alpha2",
-    "github.com/caicloud/clientset/listers/resource/v1beta1",
     "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2",
     "github.com/caicloud/clientset/util/node",
     "github.com/caicloud/clientset/util/syncqueue",
     "github.com/caicloud/go-common/kubernetes/client",
+    "github.com/hanxueluo/go-bigip",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",
@@ -1016,6 +1024,7 @@
     "github.com/zoumo/logdog",
     "gopkg.in/urfave/cli.v1",
     "k8s.io/api/core/v1",
+    "k8s.io/api/extensions/v1beta1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/labels",
@@ -1024,10 +1033,12 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/listers/core/v1",
+    "k8s.io/client-go/listers/extensions/v1beta1",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/flowcontrol",
+    "k8s.io/klog",
     "k8s.io/kubernetes/pkg/util/dbus",
     "k8s.io/kubernetes/pkg/util/exec",
     "k8s.io/kubernetes/pkg/util/iptables",

@@ -73,6 +73,10 @@
   name = "github.com/caicloud/go-common"
   version = "v0.2.6"
 
+[[constraint]]
+  name = "github.com/hanxueluo/go-bigip"
+  branch = "release-11.x"
+
 [prune]
   non-go = true
   go-tests = true
