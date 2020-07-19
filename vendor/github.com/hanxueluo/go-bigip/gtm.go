@@ -70,10 +70,10 @@ func (b *BigIP) GetGTMWideIPs(recordType GTMType) (*GTMWideIPs, error) {
 }
 
 // GetGTMWideIP get's a WideIP by name
-func (b *BigIP) GetGTMWideIP(name string, recordType GTMType) (*GTMWideIP, error) {
+func (b *BigIP) GetGTMWideIP(name string) (*GTMWideIP, error) {
 	var w GTMWideIP
 
-	err, ok := b.getForEntity(&w, uriGtm, uriWideIp, string(recordType), name)
+	err, ok := b.getForEntity(&w, uriGtm, uriWideIp, name)
 	if err != nil {
 		return nil, err
 	}
@@ -85,18 +85,18 @@ func (b *BigIP) GetGTMWideIP(name string, recordType GTMType) (*GTMWideIP, error
 }
 
 // AddGTMWideIP adds a WideIp by config to the BIG-IP system.
-func (b *BigIP) AddGTMWideIP(config *GTMWideIP, recordType GTMType) error {
-	return b.post(config, uriGtm, uriWideIp, string(recordType))
+func (b *BigIP) AddGTMWideIP(config *GTMWideIP) error {
+	return b.post(config, uriGtm, uriWideIp)
 }
 
 // DeleteGTMWideIP removes a WideIp by config to the BIG-IP system.
-func (b *BigIP) DeleteGTMWideIP(fullPath string, recordType GTMType) error {
-	return b.delete(uriGtm, uriWideIp, string(recordType), fullPath)
+func (b *BigIP) DeleteGTMWideIP(fullPath string) error {
+	return b.delete(uriGtm, uriWideIp, fullPath)
 }
 
 // ModifyGTMWideIP adds a WideIp by config to the BIG-IP system.
-func (b *BigIP) ModifyGTMWideIP(fullPath string, config *GTMWideIP, recordType GTMType) error {
-	return b.put(config, uriGtm, uriWideIp, string(recordType), fullPath)
+func (b *BigIP) ModifyGTMWideIP(fullPath string, config *GTMWideIP) error {
+	return b.put(config, uriGtm, uriWideIp, fullPath)
 }
 
 // ********************************************************************************************************************
@@ -106,8 +106,8 @@ func (b *BigIP) ModifyGTMWideIP(fullPath string, config *GTMWideIP, recordType G
 // ********************************************************************************************************************
 
 // DeleteGTMPool removes a Pool by config and Pool Type from the BIG-IP system.
-func (b *BigIP) DeleteGTMPool(fullPath string, recordType GTMType) error {
-	return b.delete(uriGtm, uriPool, string(recordType), fullPath)
+func (b *BigIP) DeleteGTMPool(fullPath string) error {
+	return b.delete(uriGtm, uriPool, fullPath)
 }
 
 // ********************************************************************************************************************
@@ -165,7 +165,7 @@ type GTMAPool struct {
 // GetGTMAPools returns a list of all Pool/A records
 func (b *BigIP) GetGTMAPools() (*GTMAPools, error) {
 	var p GTMAPools
-	err, _ := b.getForEntity(&p, uriGtm, uriPool, string(ARecord))
+	err, _ := b.getForEntity(&p, uriGtm, uriPool)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +177,7 @@ func (b *BigIP) GetGTMAPools() (*GTMAPools, error) {
 func (b *BigIP) GetGTMAPool(name string) (*GTMAPool, error) {
 	var w GTMAPool
 
-	err, ok := b.getForEntity(&w, uriGtm, uriPool, string(ARecord), name)
+	err, ok := b.getForEntity(&w, uriGtm, uriPool, name)
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +190,12 @@ func (b *BigIP) GetGTMAPool(name string) (*GTMAPool, error) {
 
 // AddGTMAPool adds a Pool/A by config to the BIG-IP system.
 func (b *BigIP) AddGTMAPool(config *GTMAPool) error {
-	return b.post(config, uriGtm, uriPool, string(ARecord))
+	return b.post(config, uriGtm, uriPool)
 }
 
 // ModifyGTMAPool adds a Pool/A by config to the BIG-IP system.
 func (b *BigIP) ModifyGTMAPool(fullPath string, config *GTMAPool) error {
-	return b.put(config, uriGtm, uriPool, string(ARecord), fullPath)
+	return b.put(config, uriGtm, uriPool, fullPath)
 }
 
 // ********************************************************************************************************************
@@ -238,7 +238,7 @@ func buildPoolMemberFullPath(serverFullPath, poolMemberFullPath string) string {
 // GetGTMAPoolMembers returns a list of all Pool/A Members records
 func (b *BigIP) GetGTMAPoolMembers(fullPathToAPool string) (*GTMAPoolMembers, error) {
 	var m GTMAPoolMembers
-	err, _ := b.getForEntity(&m, uriGtm, uriPool, string(ARecord), fullPathToAPool, uriPoolMembers)
+	err, _ := b.getForEntity(&m, uriGtm, uriPool, fullPathToAPool, uriPoolMembers)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (b *BigIP) GetGTMAPoolMember(fullPathToAPool, serverFullPath, poolMemberFul
 
 	fullPathToPoolMember := buildPoolMemberFullPath(serverFullPath, poolMemberFullPath)
 
-	err, ok := b.getForEntity(&w, uriGtm, uriPool, string(ARecord), fullPathToAPool, uriPoolMember, fullPathToPoolMember)
+	err, ok := b.getForEntity(&w, uriGtm, uriPool, fullPathToAPool, uriPoolMember, fullPathToPoolMember)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func (b *BigIP) GetGTMAPoolMember(fullPathToAPool, serverFullPath, poolMemberFul
 func (b *BigIP) CreateGTMAPoolMember(fullPathToAPool, serverFullPath, poolMemberFullPath string) error {
 	config := &GTMAPoolMember{}
 	config.Name = buildPoolMemberFullPath(serverFullPath, poolMemberFullPath)
-	return b.post(config, uriGtm, uriPool, string(ARecord), fullPathToAPool, uriPoolMember)
+	return b.post(config, uriGtm, uriPool, fullPathToAPool, uriPoolMember)
 }
 
 // DeleteGTMAPoolMember remvoes a Pool/A Member

@@ -22,10 +22,6 @@ import (
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	log "github.com/zoumo/logdog"
-
-	utildbus "k8s.io/kubernetes/pkg/util/dbus"
-	k8sexec "k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/iptables"
 )
 
 const (
@@ -70,8 +66,6 @@ var _ core.Provider = &Sidecar{}
 
 // Sidecar ...
 type Sidecar struct {
-	storeLister   core.StoreLister
-	ipt           iptables.Interface
 	sysctlDefault map[string]string
 	// tcpPorts      []string
 	// udpPorts      []string
@@ -79,20 +73,20 @@ type Sidecar struct {
 
 // NewIngressSidecar creates a new ingress sidecar
 func NewIngressSidecar(lb *lbapi.LoadBalancer) (*Sidecar, error) {
-	execer := k8sexec.New()
-	dbus := utildbus.New()
-	iptInterface := iptables.New(execer, dbus, iptables.ProtocolIpv4)
-
 	sidecar := &Sidecar{
 		sysctlDefault: make(map[string]string),
-		ipt:           iptInterface,
 	}
 
 	return sidecar, nil
 }
 
+// WatchKinds ..
+func (p *Sidecar) WatchKinds() []core.QueueObjectKind {
+	return []core.QueueObjectKind{}
+}
+
 // OnUpdate ...
-func (p *Sidecar) OnUpdate(lb *lbapi.LoadBalancer) error {
+func (p *Sidecar) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 
 	return nil
 }
@@ -134,7 +128,6 @@ func (p *Sidecar) Info() core.Info {
 
 // SetListers sets the configured store listers in the generic ingress controller
 func (p *Sidecar) SetListers(lister core.StoreLister) {
-	p.storeLister = lister
 }
 
 // changeSysctl changes the required network setting in /proc to get

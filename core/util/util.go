@@ -21,7 +21,9 @@ import (
 	"strconv"
 
 	"github.com/caicloud/clientset/kubernetes"
+	nodeutil "github.com/caicloud/clientset/util/node"
 	gocommonclient "github.com/caicloud/go-common/kubernetes/client"
+	v1listers "k8s.io/client-go/listers/core/v1"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -64,4 +66,16 @@ func setupConfigQPS(c *restclient.Config) *restclient.Config {
 	c.QPS = float32(qps)
 	c.Burst = burst
 	return c
+}
+
+func GetNodeIP(nodelister v1listers.NodeLister, name string) string {
+	node, err := nodelister.Get(name)
+	if err != nil {
+		return ""
+	}
+	ip, err := nodeutil.GetNodeHostIP(node, []string{}, []string{})
+	if err != nil {
+		return ""
+	}
+	return ip.String()
 }

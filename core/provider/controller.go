@@ -22,23 +22,27 @@ import (
 	"sync"
 
 	"github.com/caicloud/clientset/informers"
-	lblisters "github.com/caicloud/clientset/listers/loadbalance/v1alpha2"
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
 	"github.com/caicloud/clientset/util/syncqueue"
-	log "github.com/zoumo/logdog"
+
+	//log "github.com/zoumo/logdog"
 	v1 "k8s.io/api/core/v1"
+	extv1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
+	log "k8s.io/klog"
 )
 
 // GenericProvider holds the boilerplate code required to build an LoadBalancer Provider.
 type GenericProvider struct {
 	cfg *Configuration
 
-	factory  informers.SharedInformerFactory
-	lbLister lblisters.LoadBalancerLister
-	queue    *syncqueue.SyncQueue
+	ingressClass string
+
+	factory informers.SharedInformerFactory
+	listers StoreLister
+	queue   *syncqueue.SyncQueue
 
 	// stopLock is used to enforce only a single call to Stop is active.
 	// Needed because we allow stopping through an http endpoint and
@@ -48,44 +52,74 @@ type GenericProvider struct {
 	shutdown bool
 }
 
+func hasKind(kinds []QueueObjectKind, kind QueueObjectKind) bool {
+	for _, a := range kinds {
+		if a == kind {
+			return true
+		}
+	}
+	return false
+}
+
 // NewLoadBalancerProvider returns a configured LoadBalancer controller
 func NewLoadBalancerProvider(cfg *Configuration) *GenericProvider {
 
+	kinds := cfg.Backend.WatchKinds()
 	gp := &GenericProvider{
-		cfg:      cfg,
-		factory:  informers.NewSharedInformerFactory(cfg.KubeClient, 0),
-		stopLock: &sync.Mutex{},
-		stopCh:   make(chan struct{}),
+		cfg:          cfg,
+		factory:      informers.NewSharedInformerFactory(cfg.KubeClient, 0),
+		stopLock:     &sync.Mutex{},
+		stopCh:       make(chan struct{}),
+		ingressClass: fmt.Sprintf("%s.%s", cfg.LoadBalancerNamespace, cfg.LoadBalancerName),
 	}
 
-	lbinformer := gp.factory.Loadbalance().V1alpha2().LoadBalancers()
-	cminformer := gp.factory.Core().V1().ConfigMaps()
-	lbinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    gp.addLoadBalancer,
-		UpdateFunc: gp.updateLoadBalancer,
-		DeleteFunc: gp.deleteLoadBalancer,
-	})
-	cminformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: gp.updateConfigMap,
-	})
+	listers := StoreLister{}
 
-	// sync nodes
-	nodeinformer := gp.factory.Core().V1().Nodes()
-	nodeinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
+	if hasKind(kinds, QueueObjectLoadbalancer) {
+		lbinformer := gp.factory.Loadbalance().V1alpha2().LoadBalancers()
+		lbinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    gp.addLoadBalancer,
+			UpdateFunc: gp.updateLoadBalancer,
+			DeleteFunc: gp.deleteLoadBalancer,
+		})
+		listers.LoadBalancer = lbinformer.Lister()
+	}
 
-	// sync secrets
-	secretinformer := gp.factory.Core().V1().Secrets()
-	secretinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
+	if hasKind(kinds, QueueObjectConfigmap) {
+		cminformer := gp.factory.Core().V1().ConfigMaps()
+		cminformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			UpdateFunc: gp.updateConfigMap,
+		})
+		listers.ConfigMap = cminformer.Lister()
+	}
 
-	gp.cfg.Backend.SetListers(StoreLister{
-		Node:         nodeinformer.Lister(),
-		LoadBalancer: lbinformer.Lister(),
-		ConfigMap:    cminformer.Lister(),
-		Secret:       secretinformer.Lister(),
-	})
+	if hasKind(kinds, QueueObjectNode) {
+		// sync nodes
+		nodeinformer := gp.factory.Core().V1().Nodes()
+		nodeinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
+		listers.Node = nodeinformer.Lister()
+	}
 
-	gp.queue = syncqueue.NewSyncQueue(&lbapi.LoadBalancer{}, gp.syncLoadBalancer)
-	gp.lbLister = lbinformer.Lister()
+	if hasKind(kinds, QueueObjecSecret) {
+		secretinformer := gp.factory.Core().V1().Secrets()
+		secretinformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{})
+		listers.Secret = secretinformer.Lister()
+	}
+
+	if hasKind(kinds, QueueObjectIngress) {
+		ingressInformer := gp.factory.Extensions().V1beta1().Ingresses()
+		ingressInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    gp.addIngress,
+			UpdateFunc: gp.updateIngress,
+			DeleteFunc: gp.deleteIngress,
+		})
+		listers.Ingress = ingressInformer.Lister()
+	}
+
+	gp.cfg.Backend.SetListers(listers)
+
+	gp.queue = syncqueue.NewPassthroughSyncQueue(&lbapi.LoadBalancer{}, gp.syncLoadBalancer) //TODO: the first param is useless
+	gp.listers = listers
 
 	return gp
 }
@@ -102,7 +136,7 @@ func (p *GenericProvider) Start() {
 	synced := p.factory.WaitForCacheSync(p.stopCh)
 	for tpy, sync := range synced {
 		if !sync {
-			log.Error("Wait for cache sync timeout", log.Fields{"type": tpy})
+			log.Errorf("Wait for cache sync timeout %v", tpy)
 			return
 		}
 	}
@@ -150,7 +184,12 @@ func (p *GenericProvider) addLoadBalancer(obj interface{}) {
 		return
 	}
 	log.Info("Adding LoadBalancer ")
-	p.queue.Enqueue(lb)
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventAdd,
+		Kind:      QueueObjectLoadbalancer,
+		Namespace: lb.Namespace,
+		Name:      lb.Name,
+	})
 }
 
 func (p *GenericProvider) updateLoadBalancer(oldObj, curObj interface{}) {
@@ -178,8 +217,12 @@ func (p *GenericProvider) updateLoadBalancer(oldObj, curObj interface{}) {
 
 	log.Info("Updating LoadBalancer")
 
-	p.queue.Enqueue(cur)
-
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventUpdate,
+		Kind:      QueueObjectLoadbalancer,
+		Namespace: cur.Namespace,
+		Name:      cur.Name,
+	})
 }
 
 func (p *GenericProvider) deleteLoadBalancer(obj interface{}) {
@@ -204,7 +247,73 @@ func (p *GenericProvider) deleteLoadBalancer(obj interface{}) {
 
 	log.Info("Deleting LoadBalancer")
 
-	p.queue.Enqueue(lb)
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventDelete,
+		Kind:      QueueObjectLoadbalancer,
+		Namespace: lb.Namespace,
+		Name:      lb.Name,
+		Object:    lb,
+	})
+}
+func (p *GenericProvider) addIngress(obj interface{}) {
+	ing := obj.(*extv1.Ingress)
+	if p.filterIngress(ing) {
+		return
+	}
+	log.Infof("Adding Ingress %s", ing.Name)
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventAdd,
+		Kind:      QueueObjectIngress,
+		Namespace: ing.Namespace,
+		Name:      ing.Name,
+	})
+}
+func (p *GenericProvider) updateIngress(o, n interface{}) {
+	old := o.(*extv1.Ingress)
+	ing := n.(*extv1.Ingress)
+	if p.filterIngress(ing) {
+		return
+	}
+	if old.ResourceVersion == ing.ResourceVersion {
+		// Periodic resync will send update events for all known LoadBalancer.
+		// Two different versions of the same LoadBalancer will always have different RVs.
+		return
+	}
+
+	log.Infof("Updating Ingress %s", ing.Name)
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventUpdate,
+		Kind:      QueueObjectIngress,
+		Namespace: ing.Namespace,
+		Name:      ing.Name,
+	})
+}
+func (p *GenericProvider) deleteIngress(obj interface{}) {
+	ing, ok := obj.(*extv1.Ingress)
+	if !ok {
+		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("Couldn't get object from tombstone %#v", obj))
+			return
+		}
+		ing, ok = tombstone.Obj.(*extv1.Ingress)
+		if !ok {
+			utilruntime.HandleError(fmt.Errorf("Tombstone contained object that is not a LoadBalancer %#v", obj))
+			return
+		}
+	}
+
+	if p.filterIngress(ing) {
+		return
+	}
+	log.Infof("Deleting Ingress %s", ing.Name)
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventDelete,
+		Kind:      QueueObjectIngress,
+		Namespace: ing.Namespace,
+		Name:      ing.Name,
+		Object:    ing,
+	})
 }
 
 func (p *GenericProvider) updateConfigMap(oldObj, curObj interface{}) {
@@ -227,8 +336,12 @@ func (p *GenericProvider) updateConfigMap(oldObj, curObj interface{}) {
 		return
 	}
 
-	p.queue.Enqueue(cache.ExplicitKey(p.cfg.LoadBalancerNamespace + "/" + p.cfg.LoadBalancerName))
-
+	p.queue.Enqueue(&QueueObject{
+		Event:     QueueObjectEventUpdate,
+		Kind:      QueueObjectConfigmap,
+		Namespace: cur.Namespace,
+		Name:      cur.Name,
+	})
 }
 
 func (p *GenericProvider) filterLoadBalancer(lb *lbapi.LoadBalancer) bool {
@@ -236,6 +349,17 @@ func (p *GenericProvider) filterLoadBalancer(lb *lbapi.LoadBalancer) bool {
 		return false
 	}
 
+	return true
+}
+
+func (p *GenericProvider) filterIngress(ing *extv1.Ingress) bool {
+	const key string = "kubernetes.io/ingress.class"
+	if ing.Annotations != nil {
+		v := ing.Annotations[key]
+		if v == p.ingressClass {
+			return false
+		}
+	}
 	return true
 }
 
@@ -247,26 +371,33 @@ func (p *GenericProvider) filterConfigMap(cm *v1.ConfigMap) bool {
 }
 
 func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
-	key := obj.(string)
-	namespace, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
-		return err
+	if p.listers.LoadBalancer == nil {
+		return nil
 	}
 
-	lb, err := p.lbLister.LoadBalancers(namespace).Get(name)
+	queueObject := obj.(*QueueObject)
+	if queueObject.Kind == QueueObjectIngress {
+		return p.syncIngress(queueObject)
+	}
+
+	namespace := p.cfg.LoadBalancerNamespace
+	name := p.cfg.LoadBalancerName
+
+	lb, err := p.listers.LoadBalancer.LoadBalancers(namespace).Get(name)
 	if errors.IsNotFound(err) {
-		log.Warn("LoadBalancer has been deleted", log.Fields{"lb": key})
+		log.Warningf("LoadBalancer %s has been deleted", name)
 		// deleted
 		// TODO shutdown?
 		return nil
 	}
+
 	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("Unable to retrieve LoadBalancer %v from store: %v", key, err))
+		utilruntime.HandleError(fmt.Errorf("Unable to retrieve LoadBalancer %v from store: %v", name, err))
 		return err
 	}
 
 	if err := lbapi.ValidateLoadBalancer(lb); err != nil {
-		log.Debug("invalid loadbalancer scheme", log.Fields{"err": err})
+		log.Infof("invalid loadbalancer scheme: %v", err)
 		return err
 	}
 
@@ -278,5 +409,43 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 		p.cfg.UDPConfigMap = lb.Status.ProxyStatus.UDPConfigMap
 	}
 
-	return p.cfg.Backend.OnUpdate(lb)
+	queueObject.Object = lb
+
+	log.Infof("OnUpdate %+v ......", queueObject)
+	return p.cfg.Backend.OnUpdate(queueObject, lb)
+}
+
+func (p *GenericProvider) syncIngress(queueObject *QueueObject) error {
+
+	namespace := p.cfg.LoadBalancerNamespace
+	name := p.cfg.LoadBalancerName
+
+	lb, err := p.listers.LoadBalancer.LoadBalancers(namespace).Get(name)
+	if errors.IsNotFound(err) {
+		log.Warningf("LoadBalancer %s has been deleted", name)
+		lb, _ = queueObject.Object.(*lbapi.LoadBalancer)
+		err = nil
+	}
+
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Unable to retrieve LoadBalancer %v from store: %v", name, err))
+		return err
+	}
+
+	ing, err := p.listers.Ingress.Ingresses(queueObject.Namespace).Get(queueObject.Name)
+	if errors.IsNotFound(err) {
+		log.Warningf("Ingress %s has been deleted", queueObject.Name)
+		ing = queueObject.Object.(*extv1.Ingress)
+		if ing != nil {
+			err = nil
+		}
+	}
+	if err != nil {
+		log.Errorf("Failed to get ingress %v", queueObject.Name)
+		return err
+	}
+	queueObject.Object = ing
+
+	log.Infof("OnUpdate %+v ......", queueObject)
+	return p.cfg.Backend.OnUpdate(queueObject, lb) // lb may be nil, but we still need to handle ingress deleting
 }
