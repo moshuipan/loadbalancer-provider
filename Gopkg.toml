@@ -78,6 +78,10 @@
   name = "github.com/caicloud/clientset"
   branch = "release-1.14-oem-infinitus"
 
+[[override]]
+  name = "github.com/infobloxopen/infoblox-go-client"
+  branch = "release/v2.0.0"
+
 [prune]
   non-go = true
   go-tests = true

@@ -344,6 +344,14 @@
   version = "v0.3.8"
 
 [[projects]]
+  branch = "release/v2.0.0"
+  digest = "1:2d6744f7625498382516c666a419f0a1b2446e432637ba174a3c42f8435aaa84"
+  name = "github.com/infobloxopen/infoblox-go-client"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "a8464538b9cd3c109e73777041038d8d3275d674"
+
+[[projects]]
   digest = "1:88116f979a2f3ff8e6748a942ec37efd668ba2db062fc9a5e47f4dd2de339a38"
   name = "github.com/json-iterator/go"
   packages = ["."]
@@ -361,6 +369,14 @@
   ]
   pruneopts = "NUT"
   revision = "91aafc93ba19d1988cff338c1929d35b6c6f5b50"
+
+[[projects]]
+  digest = "1:a3998f85665bdf805d519735e658c0e0125bd67b57bb15e414a5a9e360e32455"
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "edb144dfd453055e1e49a3d8b410a660b5a87613"
+  version = "v1.0.3"
 
 [[projects]]
   branch = "master"
@@ -433,6 +449,14 @@
   pruneopts = "NUT"
   revision = "05f3235734ad95d0016f6a23902f06461fcf567a"
   version = "v1.5.2"
+
+[[projects]]
+  digest = "1:1dbbefdedbdb89fc0073bfa0df49e0f117f9d901fe265c24552b72473cc5a650"
+  name = "github.com/sirupsen/logrus"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "60c74ad9be0d874af0ab0daef6ab07c5c5911f0d"
+  version = "v1.6.0"
 
 [[projects]]
   digest = "1:d115708a27806831d1babbc6f28a7478ddf8e32a7095507c816e2515fb03a810"
@@ -529,7 +553,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:b315870c1c54e7b865f02deca7027bedc6def8bee7a3f26a60e8b26009bff6cb"
+  digest = "1:65a0acf660883fec223922fa46c67fcf8859d69df50009abdf1dbc0776f7b158"
   name = "golang.org/x/net"
   packages = [
     "bpf",
@@ -540,6 +564,7 @@
     "http2/hpack",
     "idna",
     "internal/timeseries",
+    "publicsuffix",
     "trace",
   ]
   pruneopts = "NUT"
@@ -1020,6 +1045,7 @@
     "github.com/caicloud/clientset/util/syncqueue",
     "github.com/caicloud/go-common/kubernetes/client",
     "github.com/hanxueluo/go-bigip",
+    "github.com/infobloxopen/infoblox-go-client",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",
