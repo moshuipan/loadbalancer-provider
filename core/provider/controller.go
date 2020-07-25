@@ -386,12 +386,11 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 	lb, err := p.listers.LoadBalancer.LoadBalancers(namespace).Get(name)
 	if errors.IsNotFound(err) {
 		log.Warningf("LoadBalancer %s has been deleted", name)
-		// deleted
-		// TODO shutdown?
-		return nil
+		lb, _ = queueObject.Object.(*lbapi.LoadBalancer)
+		err = nil
 	}
 
-	if err != nil {
+	if err != nil || lb == nil {
 		utilruntime.HandleError(fmt.Errorf("Unable to retrieve LoadBalancer %v from store: %v", name, err))
 		return err
 	}
