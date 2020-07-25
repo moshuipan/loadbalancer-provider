@@ -173,6 +173,12 @@ func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 		return err
 	}
 
+	if lb == nil || lb.DeletionTimestamp != nil {
+		// DeleteLB will clean irule, so we do nothing here
+		log.Infof("Skip EnsureIngress %s because lb is deleted", ing.Name)
+		return nil
+	}
+
 	domainsMap := make(map[string]bool)
 
 	for _, ing := range ings {
