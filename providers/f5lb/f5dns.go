@@ -35,7 +35,7 @@ gtm pool /Common/pool_all_3D {
 }
 */
 // NewF5DNSClient ...
-func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (*f5DNSClient, error) {
+func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
 	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, d.Auth.Password, lbname, nil)
 	if err != nil {
 		return nil, err

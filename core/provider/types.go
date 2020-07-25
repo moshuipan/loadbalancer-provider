@@ -154,6 +154,8 @@ type DeviceConfig struct {
 	IRule string `json:"iRule,omitempty"`
 	// VirtualServerList
 	VirtualServerList string `json:"virtualServerList,omitempty"`
+	// APIVersion
+	APIVersion string `json:"apiVersion,omitempty"`
 }
 
 // Record represents a dns record

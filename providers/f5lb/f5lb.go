@@ -63,17 +63,11 @@ type LBClient interface {
 	DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error
 }
 
-/*
+// DNSClient ...
 type DNSClient interface {
-	Name() string
-	SetListers(core.StoreLister)
-	DeleteLB(lb *lbapi.LoadBalancer) error
-	EnsureLB(lb *lbapi.LoadBalancer) error
-	EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error
-	DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error
+	EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) error
+	DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) error
 }
-type DNSClient *f5DNSClient
-*/
 
 const (
 	phaseUninitiaized = "Uninitiaized"
@@ -87,7 +81,7 @@ type Provider struct {
 	clientset   *kubernetes.Clientset
 	client      LBClient
 
-	dnsClients map[string]*f5DNSClient
+	dnsClients map[string]DNSClient
 
 	loadBalancerNamespace string
 	loadBalancerName      string
@@ -98,7 +92,7 @@ type Provider struct {
 	ingresses map[string]*v1beta1.Ingress
 }
 
-func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClient, map[string]*f5DNSClient, error) {
+func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClient, map[string]DNSClient, error) {
 
 	lbnamespace := lb.Namespace
 	lbname := lb.Name
@@ -113,7 +107,7 @@ func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClie
 		return nil, nil, err
 	}
 	var f5ltm LBClient
-	dnsDevices := make(map[string]*f5DNSClient)
+	dnsDevices := make(map[string]DNSClient)
 
 	log.Infof("lb has devices: %s, %v", devices, len(devices))
 	for _, d := range devices {
