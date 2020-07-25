@@ -68,7 +68,7 @@ func (c *f5DNSClient) EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) 
 
 	if hostName != "" {
 		virtualServers := strings.Split(dns.Addr, ",")
-		_ = c.ensureHost(hostName, virtualServers)
+		return c.ensureHost(hostName, virtualServers)
 	}
 
 	return nil
@@ -84,7 +84,7 @@ func (c *f5DNSClient) DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) 
 		}
 	}
 	if hostName != "" {
-		c.deleteHost(hostName)
+		return c.deleteHost(hostName)
 	}
 	return nil
 }
@@ -131,11 +131,12 @@ func (c *f5DNSClient) ensurePool(name string) (*gobigip.GTMAPool, error) {
 	return obj, nil
 }
 
-func (c *f5DNSClient) deleteHost(hostName string) {
+func (c *f5DNSClient) deleteHost(hostName string) error {
 	log.Infof("f5.DeleteGTMWideIP %s", hostName)
 	err := c.f5.DeleteGTMWideIP(hostName)
 	if err != nil {
-		log.Warningf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
+		log.Errorf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
+		return err
 	}
 
 	poolName := c.getPoolName(hostName)
@@ -143,7 +144,9 @@ func (c *f5DNSClient) deleteHost(hostName string) {
 	err = c.f5.DeleteGTMPool(poolName)
 	if err != nil {
 		log.Warningf("Failed to DeleteGTMPool %s: %v ", poolName, err)
+		return err
 	}
+	return nil
 }
 
 func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error {

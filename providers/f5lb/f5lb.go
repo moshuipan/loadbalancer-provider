@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	log "k8s.io/klog"
 
@@ -13,6 +14,7 @@ import (
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
@@ -40,9 +42,7 @@ lb.Status.providersStatuses.externallb{
 #### Ingress
 ```
   "ingress.Metadata.Annotations": {
-    "loadbalance.caicloud.io/specVersion": "int"       // updated by admin
     "loadbalance.caicloud.io/dnsInfo": "[]Record{}"    // related dns info
-    "loadbalance.caicloud.io/statusVersion": "int"     // update by provider
     "loadbalance.caicloud.io/statusMessage": "string"  // update by provider
   }
 ```
@@ -51,7 +51,10 @@ lb.Status.providersStatuses.externallb{
 const (
 	lbAnnotationDomain = "loadbalance.caicloud.io/"
 	lbDNSDevicesKey    = lbAnnotationDomain + "dns"
-	ingressDNSInfoKey  = lbAnnotationDomain + "dnsInfo"
+
+	ingressDNSInfoKey    = lbAnnotationDomain + "dnsInfo"
+	ingressStatusMessage = lbAnnotationDomain + "statusMessage"
+	ingressProviderID    = lbAnnotationDomain + "statusProviderID"
 )
 
 // LBClient ...
@@ -89,7 +92,7 @@ type Provider struct {
 	phase string
 
 	lb        *lbapi.LoadBalancer
-	ingresses map[string]*v1beta1.Ingress
+	startTime string
 }
 
 func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClient, map[string]DNSClient, error) {
@@ -161,7 +164,7 @@ func New(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (*Provider, er
 		loadBalancerNamespace: lb.Namespace,
 		phase:                 phaseUninitiaized,
 		lb:                    nil,
-		ingresses:             make(map[string]*v1beta1.Ingress),
+		startTime:             time.Now().Format("20060102-15:04:05"),
 	}
 
 	if lb.DeletionTimestamp != nil {
@@ -230,17 +233,70 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 	}
 
 	if o.Kind == core.QueueObjectIngress {
-		err = p.onUpdateIngress(o, lb)
-		if err != nil {
-			return err
+		ing := o.Object.(*v1beta1.Ingress)
+		if !p.isIngressNeedUpdate(ing) {
+			return nil
 		}
-		err = p.onUpdateIngressDNS(o)
-		if err != nil {
-			return err
+		var ingErr error
+		defer func() {
+			p.updateIngressStatus(ing.Namespace, ing.Name, ingErr)
+		}()
+
+		ingErr = p.onUpdateIngress(o, lb)
+		if ingErr != nil {
+			return ingErr
+		}
+		ingErr = p.onUpdateIngressDNS(o)
+		if ingErr != nil {
+			return ingErr
 		}
 	}
 
 	return nil
+}
+
+func (p *Provider) isIngressNeedUpdate(ing *v1beta1.Ingress) bool {
+	// not update if 1. has message and message is "" 2. provider restart
+	if ing.Annotations[ingressProviderID] != p.startTime {
+		return true
+	}
+
+	msg, has := ing.Annotations[ingressStatusMessage]
+	if !has {
+		return true
+	}
+	if msg != "" {
+		return true
+	}
+	return false
+}
+
+func (p *Provider) updateIngressStatus(namespace, name string, e error) {
+	ing, err := p.clientset.ExtensionsV1beta1().Ingresses(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return
+		}
+		log.Errorf("Failed to get ingress %s/%s when update status %v", namespace, name, err)
+		return
+	}
+
+	statusMessge := "ok"
+	if e != nil {
+		statusMessge = e.Error()
+	}
+
+	if ing.Annotations[ingressStatusMessage] == statusMessge && ing.Annotations[ingressProviderID] == p.startTime {
+		return
+	}
+
+	ing.Annotations[ingressStatusMessage] = statusMessge
+	ing.Annotations[ingressProviderID] = p.startTime
+	log.Infof("Update ingress %s/%s providerid: %s, status: %s", ing.Namespace, ing.Name, p.startTime, statusMessge)
+	_, err = p.clientset.ExtensionsV1beta1().Ingresses(namespace).Update(ing)
+	if err != nil {
+		log.Errorf("Failed to update ingress %s/%s, error: %v", namespace, name, err)
+	}
 }
 
 // Start ...
