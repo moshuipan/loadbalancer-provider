@@ -3,6 +3,7 @@ package f5lb
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -179,8 +180,7 @@ func (p *Provider) WatchKinds() []core.QueueObjectKind {
 	return []core.QueueObjectKind{core.QueueObjectLoadbalancer, core.QueueObjectConfigmap, core.QueueObjectNode, core.QueueObjectIngress}
 }
 
-/*
-func (p *Provider) isLBChange(cur *lbapi.LoadBalancer) bool {
+func (p *Provider) isLBNeedUpdate(cur *lbapi.LoadBalancer) bool {
 	old := p.lb
 	if old == nil {
 		return true
@@ -190,14 +190,12 @@ func (p *Provider) isLBChange(cur *lbapi.LoadBalancer) bool {
 	}
 
 	// ignore change of status
-	if reflect.DeepEqual(old.Spec, cur.Spec) &&
-		reflect.DeepEqual(old.Finalizers, cur.Finalizers) &&
-		reflect.DeepEqual(old.DeletionTimestamp, cur.DeletionTimestamp) {
+	if !reflect.DeepEqual(old.Spec, cur.Spec) ||
+		!reflect.DeepEqual(old.DeletionTimestamp, cur.DeletionTimestamp) {
 		return true
 	}
 	return false
 }
-*/
 
 func (p *Provider) updatePhase(lb *lbapi.LoadBalancer) error {
 	var err error
@@ -218,18 +216,32 @@ func (p *Provider) updatePhase(lb *lbapi.LoadBalancer) error {
 
 // OnUpdate ...
 func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
-	err := p.updatePhase(lb)
+	var err error
+	oldPhase := p.phase
+
+	defer func() {
+		if o.Kind == core.QueueObjectLoadbalancer || oldPhase == phaseUninitiaized {
+			p.updateLBStatus(lb.Namespace, lb.Name, err)
+		}
+	}()
+
+	err = p.updatePhase(lb)
 	if err != nil {
 		log.Errorf("Failed to update phase %s before update: %v", p.phase, err)
 		return err
 	}
 
 	if o.Kind == core.QueueObjectLoadbalancer {
-		err = p.onUpdateLB(o.Event, lb)
-		if err != nil {
-			return err
+		if p.isLBNeedUpdate(lb) {
+			err = p.onUpdateLB(o.Event, lb)
+			if err != nil {
+				return err
+			}
+			_ = p.onUpdateLBDNS(o)
 		}
-		_ = p.onUpdateLBDNS(o)
+
+		// cache new lb
+		p.lb = lb
 	}
 
 	if o.Kind == core.QueueObjectIngress {
@@ -423,4 +435,49 @@ func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 		}
 	}
 	return nil
+}
+
+func (p *Provider) updateLBStatus(namespace, name string, e error) {
+	curlb, err := p.clientset.LoadbalanceV1alpha2().LoadBalancers(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return
+		}
+		log.Errorf("Failed to get lb %s/%s when update status %v", namespace, name, err)
+		return
+	}
+
+	status := "Error"
+	statusMessge := "ok"
+	if e != nil {
+		statusMessge = e.Error()
+	}
+
+	finalizers := []string{fmt.Sprintf("%v-provider", name)}
+
+	if p.phase == phaseDeleted && e == nil {
+		finalizers = nil
+	}
+
+	// update provider status
+	if p.phase == phaseRunning && err == nil {
+		status = "Running"
+	}
+
+	// diff, then update lb
+	if reflect.DeepEqual(curlb.Finalizers, finalizers) &&
+		reflect.DeepEqual(curlb.Status.ProvidersStatuses.F5.Status, status) &&
+		reflect.DeepEqual(curlb.Status.ProvidersStatuses.F5.Message, statusMessge) {
+		return
+	}
+	curlb.Finalizers = finalizers
+	curlb.Status.ProvidersStatuses.F5.Status = status
+	curlb.Status.ProvidersStatuses.F5.Message = statusMessge
+
+	log.Infof("Update lb %s/%s, status: %s, message: %s, finalizer: %v", namespace, name, status, statusMessge, finalizers)
+	_, err = p.clientset.LoadbalanceV1alpha2().LoadBalancers(curlb.Namespace).Update(curlb)
+	if err != nil {
+		log.Errorf("Failed to update lb %s/%s, error: %v", namespace, name, err)
+	}
+
 }
