@@ -41,8 +41,8 @@
   version = "v11.9.0"
 
 [[projects]]
-  branch = "release-1.14"
-  digest = "1:1d5a44eb3f6d2f26aa58bd49b6402dd51a190ce401d321b342751bddf724c7e2"
+  branch = "release-1.14-oem-infinitus"
+  digest = "1:e989ff427e5a3ea0b80253cd32f822cc66d2c6054ab196090033d025f469cf18"
   name = "github.com/caicloud/clientset"
   packages = [
     "informers",
@@ -87,6 +87,8 @@
     "informers/servicemesh/v1alpha1",
     "informers/serving",
     "informers/serving/v1alpha1",
+    "informers/solution",
+    "informers/solution/v1alpha1",
     "informers/tenant",
     "informers/tenant/v1alpha1",
     "informers/workload",
@@ -117,6 +119,7 @@
     "kubernetes/typed/resource/v1beta1",
     "kubernetes/typed/servicemesh/v1alpha1",
     "kubernetes/typed/serving/v1alpha1",
+    "kubernetes/typed/solution/v1alpha1",
     "kubernetes/typed/tenant/v1alpha1",
     "kubernetes/typed/workload/v1alpha1",
     "kubernetes/typed/workload/v1beta1",
@@ -143,6 +146,7 @@
     "listers/resource/v1beta1",
     "listers/servicemesh/v1alpha1",
     "listers/serving/v1alpha1",
+    "listers/solution/v1alpha1",
     "listers/tenant/v1alpha1",
     "listers/workload/v1alpha1",
     "listers/workload/v1beta1",
@@ -169,6 +173,7 @@
     "pkg/apis/resource/v1beta1",
     "pkg/apis/servicemesh/v1alpha1",
     "pkg/apis/serving/v1alpha1",
+    "pkg/apis/solution/v1alpha1",
     "pkg/apis/tenant/v1alpha1",
     "pkg/apis/workload/v1alpha1",
     "pkg/apis/workload/v1beta1",
@@ -176,7 +181,7 @@
     "util/syncqueue",
   ]
   pruneopts = "NUT"
-  revision = "7a1797804a9c635c2e00ee98b0c964af501db0b3"
+  revision = "d287992bac5e7a4dbaac26d360de6d267a34c846"
 
 [[projects]]
   digest = "1:c0eec4f5d71d69aace7ac33d0b787f03825baa0ac9528a14c066e356121070a0"
@@ -312,6 +317,14 @@
   version = "v1.13.0"
 
 [[projects]]
+  branch = "release-11.x"
+  digest = "1:a988f8e38015ac005d77e94d618182e7642021a9b031f8d6220f9374b7d4b956"
+  name = "github.com/hanxueluo/go-bigip"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "881913ab571e65eac1894f50cdaf0f6e7060449c"
+
+[[projects]]
   digest = "1:9676627451831e0d8e347007d871eac494ce51d55b95a3fe1fac30ad8d717ab9"
   name = "github.com/hashicorp/golang-lru"
   packages = [
@@ -331,6 +344,14 @@
   version = "v0.3.8"
 
 [[projects]]
+  branch = "release/v2.0.0"
+  digest = "1:2d6744f7625498382516c666a419f0a1b2446e432637ba174a3c42f8435aaa84"
+  name = "github.com/infobloxopen/infoblox-go-client"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "a8464538b9cd3c109e73777041038d8d3275d674"
+
+[[projects]]
   digest = "1:88116f979a2f3ff8e6748a942ec37efd668ba2db062fc9a5e47f4dd2de339a38"
   name = "github.com/json-iterator/go"
   packages = ["."]
@@ -348,6 +369,14 @@
   ]
   pruneopts = "NUT"
   revision = "91aafc93ba19d1988cff338c1929d35b6c6f5b50"
+
+[[projects]]
+  digest = "1:a3998f85665bdf805d519735e658c0e0125bd67b57bb15e414a5a9e360e32455"
+  name = "github.com/konsorten/go-windows-terminal-sequences"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "edb144dfd453055e1e49a3d8b410a660b5a87613"
+  version = "v1.0.3"
 
 [[projects]]
   branch = "master"
@@ -420,6 +449,14 @@
   pruneopts = "NUT"
   revision = "05f3235734ad95d0016f6a23902f06461fcf567a"
   version = "v1.5.2"
+
+[[projects]]
+  digest = "1:1dbbefdedbdb89fc0073bfa0df49e0f117f9d901fe265c24552b72473cc5a650"
+  name = "github.com/sirupsen/logrus"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "60c74ad9be0d874af0ab0daef6ab07c5c5911f0d"
+  version = "v1.6.0"
 
 [[projects]]
   digest = "1:d115708a27806831d1babbc6f28a7478ddf8e32a7095507c816e2515fb03a810"
@@ -516,7 +553,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:b315870c1c54e7b865f02deca7027bedc6def8bee7a3f26a60e8b26009bff6cb"
+  digest = "1:65a0acf660883fec223922fa46c67fcf8859d69df50009abdf1dbc0776f7b158"
   name = "golang.org/x/net"
   packages = [
     "bpf",
@@ -527,6 +564,7 @@
     "http2/hpack",
     "idna",
     "internal/timeseries",
+    "publicsuffix",
     "trace",
   ]
   pruneopts = "NUT"
@@ -1002,11 +1040,12 @@
     "github.com/caicloud/clientset/informers",
     "github.com/caicloud/clientset/kubernetes",
     "github.com/caicloud/clientset/listers/loadbalance/v1alpha2",
-    "github.com/caicloud/clientset/listers/resource/v1beta1",
     "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2",
     "github.com/caicloud/clientset/util/node",
     "github.com/caicloud/clientset/util/syncqueue",
     "github.com/caicloud/go-common/kubernetes/client",
+    "github.com/hanxueluo/go-bigip",
+    "github.com/infobloxopen/infoblox-go-client",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",
@@ -1016,6 +1055,7 @@
     "github.com/zoumo/logdog",
     "gopkg.in/urfave/cli.v1",
     "k8s.io/api/core/v1",
+    "k8s.io/api/extensions/v1beta1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/labels",
@@ -1024,10 +1064,12 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/listers/core/v1",
+    "k8s.io/client-go/listers/extensions/v1beta1",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/flowcontrol",
+    "k8s.io/klog",
     "k8s.io/kubernetes/pkg/util/dbus",
     "k8s.io/kubernetes/pkg/util/exec",
     "k8s.io/kubernetes/pkg/util/iptables",

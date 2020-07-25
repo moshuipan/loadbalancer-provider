@@ -82,7 +82,7 @@ type Provider struct {
 func NewIpvsdrProvider(nodeIP net.IP, lb *lbapi.LoadBalancer, unicast bool, labels, annotations []string) (*Provider, error) {
 	nodeInfo, err := corenet.InterfaceByIP(nodeIP.String())
 	if err != nil {
-		log.Error("get node info err", log.Fields{"err": err})
+		log.Errorf("get node info err", log.Fields{"err": err})
 		return nil, err
 	}
 
@@ -122,8 +122,13 @@ func NewIpvsdrProvider(nodeIP net.IP, lb *lbapi.LoadBalancer, unicast bool, labe
 	return ipvs, nil
 }
 
+// WatchKinds ..
+func (p *Provider) WatchKinds() []core.QueueObjectKind {
+	return []core.QueueObjectKind{core.QueueObjectLoadbalancer, core.QueueObjectConfigmap, core.QueueObjectNode}
+}
+
 // OnUpdate ...
-func (p *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
+func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 	p.reloadRateLimiter.Accept()
 
 	if err := lbapi.ValidateLoadBalancer(lb); err != nil {

@@ -41,9 +41,6 @@
   name = "k8s.io/client-go"
   version = "kubernetes-1.14.2"
 
-[[constraint]]
-  name = "github.com/caicloud/clientset"
-  branch = "release-1.14"
 
 [[override]]
   branch = "master"
@@ -72,6 +69,18 @@
 [[constraint]]
   name = "github.com/caicloud/go-common"
   version = "v0.2.6"
+
+[[constraint]]
+  name = "github.com/hanxueluo/go-bigip"
+  branch = "release-11.x"
+
+[[override]]
+  name = "github.com/caicloud/clientset"
+  branch = "release-1.14-oem-infinitus"
+
+[[override]]
+  name = "github.com/infobloxopen/infoblox-go-client"
+  branch = "release/v2.0.0"
 
 [prune]
   non-go = true

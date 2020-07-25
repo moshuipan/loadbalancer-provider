@@ -29,7 +29,7 @@
 ROOT := github.com/caicloud/loadbalancer-provider
 
 # Target binaries. You can build multiple binaries for a single project.
-TARGETS := ingress ipvsdr azure
+TARGETS := ingress ipvsdr azure f5lb
 
 # Container image prefix and suffix added to targets.
 # The final built images are:

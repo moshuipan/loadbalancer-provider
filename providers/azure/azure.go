@@ -81,8 +81,17 @@ func (l *Provider) setCacheReserveStatus(reserve *bool) {
 // 	return false
 // }
 
+// WatchKinds ..
+func (l *Provider) WatchKinds() []core.QueueObjectKind {
+	return []core.QueueObjectKind{
+		core.QueueObjectLoadbalancer,
+		core.QueueObjectConfigmap,
+		core.QueueObjectNode,
+		core.QueueObjecSecret}
+}
+
 // OnUpdate update loadbalancer
-func (l *Provider) OnUpdate(lb *lbapi.LoadBalancer) error {
+func (l *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 
 	log.Infof("OnUpdate......")
 	if lb.Spec.Providers.Azure == nil {
