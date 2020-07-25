@@ -177,19 +177,33 @@ func (c *f5DNSClient) ensurePool(name string) (*gobigip.GTMAPool, error) {
 }
 
 func (c *f5DNSClient) deleteHost(hostName string) error {
-	log.Infof("f5.DeleteGTMWideIP %s", hostName)
-	err := c.f5.DeleteGTMWideIP(hostName)
+	wip, err := c.f5.GetGTMWideIP(hostName)
 	if err != nil {
-		log.Errorf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
+		log.Errorf("Failed to GetGTMWideIP %s when delete: %v ", hostName, err)
 		return err
+	}
+	if wip != nil {
+		log.Infof("f5.DeleteGTMWideIP %s", hostName)
+		err = c.f5.DeleteGTMWideIP(hostName)
+		if err != nil {
+			log.Errorf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
+			return err
+		}
 	}
 
 	poolName := c.getPoolName(hostName)
-	log.Infof("f5.DeleteGTMPool %s", poolName)
-	err = c.f5.DeleteGTMPool(poolName)
+	pool, err := c.f5.GetGTMAPool(poolName)
 	if err != nil {
-		log.Warningf("Failed to DeleteGTMPool %s: %v ", poolName, err)
+		log.Errorf("Failed to GetGTMAPool %s when delete: %v ", poolName, err)
 		return err
+	}
+	if pool != nil {
+		log.Infof("f5.DeleteGTMPool %s", poolName)
+		err = c.f5.DeleteGTMPool(poolName)
+		if err != nil {
+			log.Warningf("Failed to DeleteGTMPool %s: %v ", poolName, err)
+			return err
+		}
 	}
 	return nil
 }
