@@ -1,6 +1,7 @@
 package f5lb
 
 import (
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -53,7 +54,11 @@ type f5LTMClient struct {
 
 // NewF5LTMClient ...
 func NewF5LTMClient(d provider.Device, lbnamespace, lbname string) (LBClient, error) {
-	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, d.Auth.Password, lbname, nil)
+	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
+	if err != nil {
+		return nil, err
+	}
+	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, string(bs), lbname, nil)
 	if err != nil {
 		return nil, err
 	}

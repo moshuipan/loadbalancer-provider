@@ -3,8 +3,11 @@ package f5lb
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	gobigip "github.com/hanxueluo/go-bigip"
+
+	"encoding/base64"
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
@@ -36,7 +39,12 @@ gtm pool /Common/pool_all_3D {
 */
 // NewF5DNSClient ...
 func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
-	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, d.Auth.Password, lbname, nil)
+	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
+	if err != nil {
+		return nil, err
+	}
+
+	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, string(bs), lbname, nil)
 	if err != nil {
 		return nil, err
 	}

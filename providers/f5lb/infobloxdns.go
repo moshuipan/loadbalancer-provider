@@ -1,6 +1,7 @@
 package f5lb
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -85,11 +86,16 @@ type infobloxDNSClient struct {
 }
 
 func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
+	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
+	if err != nil {
+		return nil, err
+	}
+
 	hostConfig := ibclient.HostConfig{
 		Host:     d.ManageAddr,
 		Version:  d.Config.APIVersion,
 		Username: d.Auth.User,
-		Password: d.Auth.Password,
+		Password: string(bs),
 	}
 	transportConfig := ibclient.NewTransportConfig("false", 20, 10)
 	requestBuilder := &ibclient.WapiRequestBuilder{}
