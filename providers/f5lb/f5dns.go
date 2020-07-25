@@ -15,10 +15,42 @@ import (
 )
 
 type f5DNSClient struct {
-	f5 *gobigip.BigIP
+	f5CommonClient
 	//virtualServers [][]string
 	poolPrefix string
 	lbname     string
+}
+type f5CommonClient struct {
+	f5 *gobigip.BigIP
+	d  provider.Device
+	t  time.Time
+}
+
+func refreshToken(c *f5CommonClient) error {
+	var err error
+
+	n := time.Now()
+	if c.f5 == nil || time.Now().Add(time.Duration(-120)*time.Second).After(c.t) {
+		defer func() {
+			if err != nil {
+				log.Errorf("Failed to refresh device %s token:%v", c.d.Name, err)
+			}
+		}()
+
+		bs, err := base64.RawStdEncoding.DecodeString(c.d.Auth.Password)
+		if err != nil {
+			return err
+		}
+
+		log.Infof("gobigip.NewTokenSession for %s device: %v", c.d.Name, n)
+		f5, err := gobigip.NewTokenSession(c.d.ManageAddr, c.d.Auth.User, string(bs), "", nil)
+		if err != nil {
+			return err
+		}
+		c.f5 = f5
+		c.t = n
+	}
+	return nil
 }
 
 /*
@@ -37,34 +69,34 @@ gtm pool /Common/pool_all_3D {
     monitor /Common/gateway_icmp
 }
 */
+
 // NewF5DNSClient ...
 func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
-	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
-	if err != nil {
-		return nil, err
+	lbclient := &f5DNSClient{
+		poolPrefix: d.Config.PoolPrefix,
+		lbname:     fmt.Sprintf("%s.%s", lbname, lbnamespace),
 	}
+	lbclient.d = d
 
-	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, string(bs), lbname, nil)
+	err := refreshToken(&lbclient.f5CommonClient)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("Trying f5gtm list pool API call:%s, user:%s", d.ManageAddr, d.Auth.User)
-	_, err = f5.GetGTMCNamePools()
+	_, err = lbclient.f5.GetGTMCNamePools()
 	if err != nil {
 		return nil, err
-	}
-
-	lbclient := &f5DNSClient{
-		f5:         f5,
-		poolPrefix: d.Config.PoolPrefix,
-		lbname:     fmt.Sprintf("%s.%s", lbname, lbnamespace),
 	}
 
 	return lbclient, nil
 }
 
 func (c *f5DNSClient) EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
 	hostName := ""
 	for _, r := range ing.Spec.Rules {
 		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {
@@ -83,6 +115,10 @@ func (c *f5DNSClient) EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) 
 }
 
 func (c *f5DNSClient) DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
 	hostName := ""
 	for _, r := range ing.Spec.Rules {
 		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {

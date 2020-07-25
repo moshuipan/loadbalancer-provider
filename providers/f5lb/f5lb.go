@@ -124,6 +124,9 @@ func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClie
 		if err != nil {
 			return nil, nil, err
 		}
+		if _, ok := dnsDevices[device.Name]; ok {
+			continue
+		}
 		if device.Type == "F5" && device.SubType == "F5-LTM" {
 			f5ltm, err = NewF5LTMClient(device, lbnamespace, lbname)
 			if err != nil {

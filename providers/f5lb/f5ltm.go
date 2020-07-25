@@ -1,7 +1,6 @@
 package f5lb
 
 import (
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -44,8 +43,8 @@ when HTTP_REQUEST {
 const defaultHTTPPort = "80"
 
 type f5LTMClient struct {
+	f5CommonClient
 	storeLister core.StoreLister
-	f5          *gobigip.BigIP
 	namePrefix  string
 
 	virtualServer string
@@ -54,35 +53,30 @@ type f5LTMClient struct {
 
 // NewF5LTMClient ...
 func NewF5LTMClient(d provider.Device, lbnamespace, lbname string) (LBClient, error) {
-	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
-	if err != nil {
-		return nil, err
-	}
-	f5, err := gobigip.NewTokenSession(d.ManageAddr, d.Auth.User, string(bs), lbname, nil)
-	if err != nil {
-		return nil, err
-	}
 	vsName := strings.Split(d.Config.VirtualServerList, ",")[0]
 	iruleName := d.Config.IRule
 
-	log.Infof("Trying f5ltm API call:%s, user:%s, vs:%s, irule: %s", d.ManageAddr, d.Auth.User, vsName, iruleName)
-	vs, err := f5.GetVirtualAddress(vsName)
+	lbclient := &f5LTMClient{
+		namePrefix:    fmt.Sprintf("%s_%s_", lbnamespace, lbname),
+		virtualServer: vsName,
+		irule:         iruleName,
+	}
+	lbclient.d = d
+	err := refreshToken(&lbclient.f5CommonClient)
 	if err != nil {
 		return nil, err
 	}
-	irule, err := f5.IRule(iruleName)
+	log.Infof("Trying f5ltm API call:%s, user:%s, vs:%s, irule: %s", d.ManageAddr, d.Auth.User, vsName, iruleName)
+	vs, err := lbclient.f5.GetVirtualAddress(vsName)
+	if err != nil {
+		return nil, err
+	}
+	irule, err := lbclient.f5.IRule(iruleName)
 	if err != nil {
 		return nil, err
 	}
 	if irule == nil || vs == nil {
 		return nil, fmt.Errorf("resource not found: vs:%v,irule:%v", vs, irule)
-	}
-
-	lbclient := &f5LTMClient{
-		f5:            f5,
-		namePrefix:    fmt.Sprintf("%s_%s_", lbnamespace, lbname),
-		virtualServer: vsName,
-		irule:         iruleName,
 	}
 
 	return lbclient, nil
@@ -95,6 +89,10 @@ func (c *f5LTMClient) SetListers(lister core.StoreLister) {
 
 // DeleteLB...
 func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
 	iruleName := c.getIRuleName()
 
 	obj, err := c.f5.IRule(iruleName)
@@ -142,7 +140,11 @@ func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
 
 // EnsureLB...
 func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer) error {
-	_, err := c.f5.GetVirtualServer(c.virtualServer)
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
+	_, err = c.f5.GetVirtualServer(c.virtualServer)
 	if err != nil {
 		return err
 	}
@@ -157,11 +159,19 @@ func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer) error {
 
 // DeleteIngresse...
 func (c *f5LTMClient) DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error {
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
 	return c.EnsureIngress(lb, ing, ings)
 }
 
 // EnsureIngress...
 func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error {
+	err := refreshToken(&c.f5CommonClient)
+	if err != nil {
+		return err
+	}
 
 	domainsMap := make(map[string]bool)
 
