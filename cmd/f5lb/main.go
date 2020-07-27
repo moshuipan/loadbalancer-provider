@@ -75,7 +75,7 @@ func main() {
 	_ = flag.CommandLine.Parse([]string{})
 
 	app := cli.NewApp()
-	app.Name = "external provider"
+	app.Name = "f5lb provider"
 	app.Compiled = time.Now()
 	app.Version = version.Get().Version
 	// add flags to app

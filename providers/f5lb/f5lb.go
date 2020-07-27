@@ -50,12 +50,18 @@ lb.Status.providersStatuses.externallb{
 */
 
 const (
-	lbAnnotationDomain = "loadbalance.caicloud.io/"
-	lbDNSDevicesKey    = lbAnnotationDomain + "dns"
+	lbDNSDevicesKey = lbapi.GroupName + "/dns"
 
-	ingressDNSInfoKey    = lbAnnotationDomain + "dnsInfo"
-	ingressStatusMessage = lbAnnotationDomain + "statusMessage"
-	ingressProviderID    = lbAnnotationDomain + "statusProviderID"
+	ingressDNSInfoKey    = lbapi.GroupName + "/dnsInfo"
+	ingressStatusMessage = lbapi.GroupName + "/statusMessage"
+	ingressProviderID    = lbapi.GroupName + "/statusProviderID"
+
+	lbDeviceConfigMap      = "loadbalance-devices-cm"
+	deviceTypeDNS          = "DNS"
+	deviceTypeF5           = "F5"
+	deviceTypeF5SubtypeLTM = "F5-LTM"
+	deviceTypeF5SubtypeDNS = "F5-DNS"
+	statusOK               = "ok"
 )
 
 // LBClient ...
@@ -106,7 +112,7 @@ func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClie
 		devices = append(devices, strings.Split(s, ",")...)
 	}
 
-	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get("loadbalance-devices-cm", metav1.GetOptions{})
+	cm, err := clientset.CoreV1().ConfigMaps("kube-system").Get(lbDeviceConfigMap, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -127,20 +133,20 @@ func getDevices(clientset *kubernetes.Clientset, lb *lbapi.LoadBalancer) (LBClie
 		if _, ok := dnsDevices[device.Name]; ok {
 			continue
 		}
-		if device.Type == "F5" && device.SubType == "F5-LTM" {
+		if device.Type == deviceTypeF5 && device.SubType == deviceTypeF5SubtypeLTM {
 			f5ltm, err = NewF5LTMClient(device, lbnamespace, lbname)
 			if err != nil {
 				return nil, nil, err
 			}
 		}
 
-		if device.Type == "F5" && device.SubType == "F5-DNS" {
+		if device.Type == deviceTypeF5 && device.SubType == deviceTypeF5SubtypeDNS {
 			c, err := newF5DNSClient(device, lbnamespace, lbname)
 			if err != nil {
 				return nil, nil, err
 			}
 			dnsDevices[device.Name] = c
-		} else if device.Type == "DNS" {
+		} else if device.Type == deviceTypeDNS {
 			c, err := newInfobloxClient(device, lbnamespace, lbname)
 			if err != nil {
 				return nil, nil, err
@@ -280,7 +286,7 @@ func (p *Provider) isIngressNeedUpdate(ing *v1beta1.Ingress) bool {
 	if !has {
 		return true
 	}
-	if msg != "" {
+	if msg != statusOK {
 		return true
 	}
 	return false
@@ -296,7 +302,7 @@ func (p *Provider) updateIngressStatus(namespace, name string, e error) {
 		return
 	}
 
-	statusMessge := "ok"
+	statusMessge := statusOK
 	if e != nil {
 		statusMessge = e.Error()
 	}
@@ -329,7 +335,7 @@ func (p *Provider) Stop() error {
 func (p *Provider) Info() core.Info {
 	info := version.Get()
 	return core.Info{
-		Name:      "externallb",
+		Name:      "f5lb",
 		Version:   info.Version,
 		GitCommit: info.GitCommit,
 		GitRemote: info.GitRemote,
@@ -455,7 +461,7 @@ func (p *Provider) updateLBStatus(namespace, name string, e error) {
 	}
 
 	status := "Error"
-	statusMessge := "ok"
+	statusMessge := statusOK
 	if e != nil {
 		statusMessge = e.Error()
 	}
@@ -468,7 +474,7 @@ func (p *Provider) updateLBStatus(namespace, name string, e error) {
 
 	// update provider status
 	if p.phase == phaseRunning && err == nil {
-		status = "Running"
+		status = phaseRunning
 	}
 
 	// diff, then update lb
