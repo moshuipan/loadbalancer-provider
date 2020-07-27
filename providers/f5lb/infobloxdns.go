@@ -91,9 +91,11 @@ func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient
 		return nil, err
 	}
 
+	version := strings.TrimLeft(d.Config.APIVersion, "v")
+
 	hostConfig := ibclient.HostConfig{
 		Host:     d.ManageAddr,
-		Version:  d.Config.APIVersion,
+		Version:  version,
 		Username: d.Auth.User,
 		Password: string(bs),
 	}
