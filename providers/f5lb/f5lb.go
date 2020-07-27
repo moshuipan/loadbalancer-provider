@@ -414,9 +414,13 @@ func (p *Provider) onUpdateIngressDNS(o *core.QueueObject) error {
 
 func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 	s := ing.Annotations[ingressDNSInfoKey]
+	if s == "" {
+		return nil
+	}
 
 	var dnsInfo []provider.Record
 	if err := json.Unmarshal([]byte(s), &dnsInfo); err != nil {
+		log.Errorf("Failed to Unmarshal ingress %s dnsInfo: %s", ing.Name, s)
 		return err
 	}
 
