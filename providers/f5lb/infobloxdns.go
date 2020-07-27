@@ -183,7 +183,7 @@ func (c *infobloxDNSClient) ensureHost(hostName string, addr string, zone string
 	}
 
 	log.Infof("ibclient.CreateARecord view:%s, hostName:%s, ip:%s, comment: %s", view, hostName, addr, comment)
-	_, err = c.client.CreateARecord(ibclient.RecordA{Ref: rec.Ref, Ipv4Addr: addr, Comment: comment, View: view})
+	_, err = c.client.CreateARecord(ibclient.RecordA{Name: hostName, Ipv4Addr: addr, Comment: comment, View: view})
 	if err != nil {
 		log.Errorf("Failed to create record %s, err:%v", hostName, err)
 	}
