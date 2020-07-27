@@ -86,7 +86,7 @@ type infobloxDNSClient struct {
 }
 
 func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
-	bs, err := base64.RawStdEncoding.DecodeString(d.Auth.Password)
+	bs, err := base64.StdEncoding.DecodeString(d.Auth.Password)
 	if err != nil {
 		return nil, err
 	}

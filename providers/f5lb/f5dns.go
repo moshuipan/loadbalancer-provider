@@ -38,7 +38,7 @@ func refreshToken(c *f5CommonClient) error {
 			}
 		}()
 
-		bs, err := base64.RawStdEncoding.DecodeString(c.d.Auth.Password)
+		bs, err := base64.StdEncoding.DecodeString(c.d.Auth.Password)
 		if err != nil {
 			return err
 		}
