@@ -201,6 +201,9 @@ func (c *infobloxDNSClient) deleteHost(hostName string) error {
 	rec, err := c.getRecord(hostName, view)
 	if err != nil {
 		log.Warningf("Failed to get record %s in view %s to delete: %v", hostName, view, err)
+		if isNotFoundError(err) {
+			err = nil
+		}
 		return err
 	}
 
@@ -215,13 +218,19 @@ func (c *infobloxDNSClient) deleteHost(hostName string) error {
 	return nil
 }
 
+const notFoundError = "No Record Found"
+
+func isNotFoundError(e error) bool {
+	return strings.HasPrefix(e.Error(), notFoundError)
+}
+
 func (c *infobloxDNSClient) getRecord(hostName, view string) (*ibclient.RecordA, error) {
 	recs, err := c.client.GetARecord(ibclient.RecordA{Name: hostName, View: view})
 	if err != nil {
 		return nil, err
 	}
 	if recs == nil {
-		return nil, fmt.Errorf("No Records Found for %s", hostName)
+		return nil, fmt.Errorf("%s for %s", notFoundError, hostName)
 	}
 	comment := c.getKeyCommnet()
 	for i, rec := range *recs {
