@@ -430,8 +430,9 @@ func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 		return err
 	}
 
-	var err error
+	var firstError error
 	for _, dns := range dnsInfo {
+		var err error
 		client, ok := p.dnsClients[dns.DNSName]
 		if !ok {
 			log.Errorf("dns %s not found for ingress %s", dns.DNSName, ing.Name)
@@ -445,9 +446,12 @@ func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 		}
 		if err != nil {
 			log.Errorf("Failed to update Ingress %s:%v", ing.Name, err)
+			if firstError == nil {
+				firstError = err
+			}
 		}
 	}
-	return nil
+	return firstError
 }
 
 func (p *Provider) updateLBStatus(namespace, name string, e error) {
