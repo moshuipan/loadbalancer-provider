@@ -255,7 +255,7 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 
 	if o.Kind == core.QueueObjectIngress {
 		ing := o.Object.(*v1beta1.Ingress)
-		if !p.isIngressNeedUpdate(ing) {
+		if !p.isIngressNeedUpdate(o.Event, ing) {
 			return nil
 		}
 		var ingErr error
@@ -276,9 +276,14 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 	return nil
 }
 
-func (p *Provider) isIngressNeedUpdate(ing *v1beta1.Ingress) bool {
+func (p *Provider) isIngressNeedUpdate(event core.QueueObjectEvent, ing *v1beta1.Ingress) bool {
 	// not update if 1. has message and message is "" 2. provider restart
 	if ing.Annotations[ingressProviderID] != p.startTime {
+		return true
+	}
+
+	// attention: DeletionTimestamp does not always have value when ing is deleted, so we also test the event
+	if ing.DeletionTimestamp != nil || event == core.QueueObjectEventDelete {
 		return true
 	}
 
