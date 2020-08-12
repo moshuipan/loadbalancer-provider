@@ -32,7 +32,7 @@ func (ipvs *ipvsCacheCleaner) worker() {
 		// because it may request a lot cpu to do that if
 		// there are a large number of connections
 		// so we just restore it
-		ipvs.ipvsRestore()
+		_ = ipvs.ipvsRestore()
 		return
 	}
 
@@ -40,10 +40,10 @@ func (ipvs *ipvsCacheCleaner) worker() {
 	if cacheExists {
 		// vip doesn't exist but cache exists
 		// we should clean the rules and wait for cache expiring
-		ipvs.ipvsSaveAndClean()
+		_ = ipvs.ipvsSaveAndClean()
 	} else {
 		// backup but no cache
-		ipvs.ipvsRestore()
+		_ = ipvs.ipvsRestore()
 	}
 }
 
@@ -53,8 +53,8 @@ func (ipvs *ipvsCacheCleaner) ipvsSaveAndClean() error {
 		return nil
 	}
 
-	ipvsadm := shell.Command("ipvsadm").CombinedOutputClosure()
-	output, err := ipvsadm("-Sn")
+	ipvsadmCmd := shell.Command("ipvsadm").CombinedOutputClosure()
+	output, err := ipvsadmCmd("-Sn")
 	if err != nil {
 		log.Errorf("Error save ipvs rules: %v", string(output))
 		return err
@@ -64,7 +64,7 @@ func (ipvs *ipvsCacheCleaner) ipvsSaveAndClean() error {
 		return nil
 	}
 	// clean the whole table
-	msg, err := ipvsadm("-C")
+	msg, err := ipvsadmCmd("-C")
 	if err != nil {
 		log.Errorf("Error clean ipvs rules: %v", string(msg))
 		return err
@@ -115,7 +115,7 @@ func checkCacheExists() bool {
 	if err != nil {
 		return false
 	}
-	defer ipvsconn.Close()
+	defer func() { _ = ipvsconn.Close() }()
 
 	scanner := bufio.NewScanner(ipvsconn)
 	number := 0

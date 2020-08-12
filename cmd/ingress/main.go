@@ -25,9 +25,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/caicloud/clientset/kubernetes"
-	corenode "github.com/caicloud/loadbalancer-provider/core/pkg/node"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
+	coreutil "github.com/caicloud/loadbalancer-provider/core/util"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	"github.com/caicloud/loadbalancer-provider/providers/ingress"
 	log "github.com/zoumo/logdog"
@@ -35,7 +34,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 // Run ...
@@ -58,28 +56,10 @@ func Run(opts *Options) error {
 		log.ApplyOptions(log.InfoLevel)
 	}
 
-	// build config
 	log.Infof("load kubeconfig from %s", opts.Kubeconfig)
-	config, err := clientcmd.BuildConfigFromFlags("", opts.Kubeconfig)
+	clientset, err := coreutil.NewClientSet(opts.Kubeconfig)
 	if err != nil {
-		log.Fatal("Create kubeconfig error", log.Fields{"err": err})
-		return err
-	}
-
-	// create clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Fatal("Create kubernetes client error", log.Fields{"err": err})
-		return err
-	}
-
-	labels := []string{opts.NodeIPLabel}
-	annotations := []string{opts.NodeIPAnnotation}
-
-	// get node ip
-	nodeIP, err := corenode.GetNodeIPForPod(clientset, opts.PodNamespace, opts.PodName, labels, annotations)
-	if err != nil {
-		log.Fatal("Can not get node ip", log.Fields{"err": err})
+		log.Fatal("Create clientset error", log.Fields{"err": err})
 		return err
 	}
 
@@ -89,7 +69,7 @@ func Run(opts *Options) error {
 		return err
 	}
 
-	sidecar, err := ingress.NewIngressSidecar(nodeIP, lb)
+	sidecar, err := ingress.NewIngressSidecar(lb)
 	if err != nil {
 		return err
 	}
@@ -116,7 +96,7 @@ func Run(opts *Options) error {
 
 func main() {
 	// fix for avoiding glog Noisy logs
-	flag.CommandLine.Parse([]string{})
+	_ = flag.CommandLine.Parse([]string{})
 
 	app := cli.NewApp()
 	app.Name = "ingress sidecar"
@@ -136,7 +116,7 @@ func main() {
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 
-	app.Run(os.Args)
+	_ = app.Run(os.Args)
 }
 
 func handleSigterm(p *core.GenericProvider) {

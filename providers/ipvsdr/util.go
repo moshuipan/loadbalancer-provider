@@ -19,20 +19,15 @@ package ipvsdr
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
-	"regexp"
-
-	"github.com/golang/glog"
-	k8sexec "k8s.io/kubernetes/pkg/util/exec"
 )
 
 var (
-	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
-	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
-	vethRegex     = regexp.MustCompile(`^veth.*`)
-	lvsRegex      = regexp.MustCompile(`NAT`)
+//	invalidIfaces = []string{"lo", "docker0", "flannel.1", "cbr0"}
+//	nsSvcLbRegex  = regexp.MustCompile(`(.*)/(.*):(.*)|(.*)/(.*)`)
+//	vethRegex     = regexp.MustCompile(`^veth.*`)
+//	lvsRegex      = regexp.MustCompile(`NAT`)
 )
 
 type stringSlice []string
@@ -58,16 +53,6 @@ func appendIfMissing(slice []string, item string) []string {
 	return append(slice, item)
 }
 
-func resetIPVS() error {
-	glog.Info("cleaning ipvs configuration")
-	_, err := k8sexec.New().Command("ipvsadm", "-C").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error removing ipvs configuration: %v", err)
-	}
-
-	return nil
-}
-
 func getNeighbors(ip string, nodes []string) (neighbors []string) {
 	for _, neighbor := range nodes {
 		if ip != neighbor {
@@ -89,7 +74,7 @@ func checksum(filename string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := md5.New()
 	_, err = io.Copy(hash, file)

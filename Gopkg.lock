@@ -42,7 +42,7 @@
 
 [[projects]]
   branch = "release-1.12"
-  digest = "1:40b489d0017835c23ded3a08b47c9565c5703229fe1553e9ad825edd4a9977ee"
+  digest = "1:efcc66b8cd4331906ceb7d0ce3a407b74c8fe2cae0db9265d7af463e97161567"
   name = "github.com/caicloud/clientset"
   packages = [
     "informers",
@@ -149,7 +149,15 @@
     "util/syncqueue",
   ]
   pruneopts = "NUT"
-  revision = "5c4075a9e3a7efc0cf2f2041c919f014ac11dc62"
+  revision = "074f696502de30031ed43bb737b3949ed4c99074"
+
+[[projects]]
+  digest = "1:c0eec4f5d71d69aace7ac33d0b787f03825baa0ac9528a14c066e356121070a0"
+  name = "github.com/caicloud/go-common"
+  packages = ["kubernetes/client"]
+  pruneopts = "NUT"
+  revision = "34dfb37a364d1dfc5ce62ac18c5c8be4d3f605a4"
+  version = "v0.0.1"
 
 [[projects]]
   digest = "1:65b0d980b428a6ad4425f2df4cd5410edd81f044cf527bd1c345368444649e58"
@@ -918,7 +926,7 @@
     "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2",
     "github.com/caicloud/clientset/util/node",
     "github.com/caicloud/clientset/util/syncqueue",
-    "github.com/golang/glog",
+    "github.com/caicloud/go-common/kubernetes/client",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",
@@ -936,6 +944,7 @@
     "k8s.io/apimachinery/pkg/util/wait",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/listers/core/v1",
+    "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/cache",
     "k8s.io/client-go/tools/clientcmd",
     "k8s.io/client-go/util/flowcontrol",
