@@ -30,8 +30,8 @@ func refreshToken(c *f5CommonClient) error {
 	var err error
 
 	n := time.Now()
-	// default timeout of f5 token is 1200s, but we will refresh it in ervery 120s
-	if c.f5 == nil || time.Now().Add(time.Duration(-120)*time.Second).After(c.t) {
+	// default timeout of f5 token is 1200s, but we will refresh it in ervery 1080s(18min)
+	if c.f5 == nil || time.Now().Add(time.Duration(-1080)*time.Second).After(c.t) {
 		defer func() {
 			if err != nil {
 				log.Errorf("Failed to refresh device %s token:%v", c.d.Name, err)
