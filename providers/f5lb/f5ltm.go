@@ -3,14 +3,14 @@ package f5lb
 import (
 	"fmt"
 	"sort"
-	"strings"
+	"strconv"
 
 	gobigip "github.com/hanxueluo/go-bigip"
 
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
-	"github.com/caicloud/loadbalancer-provider/core/provider"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	coreutil "github.com/caicloud/loadbalancer-provider/core/util"
+	v1 "k8s.io/api/core/v1"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	log "k8s.io/klog"
 )
@@ -47,36 +47,47 @@ type f5LTMClient struct {
 	storeLister core.StoreLister
 	namePrefix  string
 
-	virtualServer string
-	irule         string
+	l7vs *core.LTMVirtualServer
+	l4vs *core.LTMVirtualServer
 }
 
 // NewF5LTMClient ...
-func NewF5LTMClient(d provider.Device, lbnamespace, lbname string) (LBClient, error) {
-	vsName := strings.Split(d.Config.VirtualServerList, ",")[0]
-	iruleName := d.Config.IRule
-
+func NewF5LTMClient(d core.Device, lbnamespace, lbname string) (LBClient, error) {
 	lbclient := &f5LTMClient{
-		namePrefix:    fmt.Sprintf("%s_%s_", lbnamespace, lbname),
-		virtualServer: vsName,
-		irule:         iruleName,
+		namePrefix: fmt.Sprintf("%s_%s_", lbnamespace, lbname),
 	}
+
+	for i, s := range d.Config.LTMVSList {
+		if s.Type == "L4" {
+			lbclient.l4vs = &d.Config.LTMVSList[i]
+		} else {
+			lbclient.l7vs = &d.Config.LTMVSList[i]
+		}
+	}
+
 	lbclient.d = d
 	err := refreshToken(&lbclient.f5CommonClient)
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("Trying f5ltm API call:%s, user:%s, vs:%s, irule: %s", d.ManageAddr, d.Auth.User, vsName, iruleName)
-	vs, err := lbclient.f5.GetVirtualAddress(vsName)
-	if err != nil {
-		return nil, err
-	}
-	irule, err := lbclient.f5.IRule(iruleName)
-	if err != nil {
-		return nil, err
-	}
-	if irule == nil || vs == nil {
-		return nil, fmt.Errorf("resource not found: vs:%v,irule:%v", vs, irule)
+
+	for _, ltmvs := range []*core.LTMVirtualServer{lbclient.l7vs, lbclient.l4vs} {
+		if ltmvs == nil {
+			continue
+		}
+
+		log.Infof("Trying f5ltm API call:%s, user:%s, vs:%s, irule: %s", d.ManageAddr, d.Auth.User, ltmvs.Name, ltmvs.IRule)
+		vs, err := lbclient.f5.GetVirtualAddress(ltmvs.Name)
+		if err != nil {
+			return nil, err
+		}
+		irule, err := lbclient.f5.IRule(ltmvs.IRule)
+		if err != nil {
+			return nil, err
+		}
+		if irule == nil || vs == nil {
+			return nil, fmt.Errorf("resource not found: vs:%v,irule:%v", vs, irule)
+		}
 	}
 
 	return lbclient, nil
@@ -93,25 +104,32 @@ func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
 	if err != nil {
 		return err
 	}
-	iruleName := c.getIRuleName()
 
-	obj, err := c.f5.IRule(iruleName)
-	if err != nil {
-		log.Warningf("Failed to get irule %s when clean: %v", iruleName, err)
-	}
-
-	if obj != nil {
-		content := "# " + c.namePrefix
-		if obj.Rule != content {
-			obj.Rule = content
-			log.Infof("f5.ModifyIRule %s:\n%v", iruleName, content)
-			if err := c.f5.ModifyIRule(obj.Name, obj); err != nil {
-				log.Warningf("Failed to clean irule %s:%v", iruleName, err)
-			}
+	if c.l7vs != nil {
+		newRule := c.generateL7Rule([]*v1beta1.Ingress{})
+		err = c.ensureIRule(newRule, c.l7vs.IRule)
+		if err != nil {
+			log.Warningf("Failed to clean irule %s:%v", c.l7vs.IRule, err)
 		}
 	}
 
-	poolName := c.getPoolName()
+	if c.l4vs != nil {
+		newRule := c.generateL4Rule(map[string]string{})
+		err = c.ensureIRule(newRule, c.l4vs.IRule)
+		if err != nil {
+			log.Warningf("Failed to clean irule %s:%v", c.l7vs.IRule, err)
+		}
+	}
+
+	var poolName string
+	poolName = c.getPoolName("l4")
+	log.Infof("f5.DeletePool %s", poolName)
+	err = c.f5.DeletePool(poolName)
+	if err != nil {
+		log.Warningf("Failed to delete pool %s", poolName)
+	}
+
+	poolName = c.getPoolName("l7")
 	log.Infof("f5.DeletePool %s", poolName)
 	err = c.f5.DeletePool(poolName)
 	if err != nil {
@@ -139,19 +157,28 @@ func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
 }
 
 // EnsureLB...
-func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer) error {
+func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error {
+	//lb.Status.ProxyStatus.TCPConfigMap
 	err := refreshToken(&c.f5CommonClient)
 	if err != nil {
 		return err
 	}
-	_, err = c.f5.GetVirtualServer(c.virtualServer)
+	_, err = c.f5.GetVirtualServer(c.l7vs.Name)
 	if err != nil {
 		return err
 	}
 
-	poolName := c.getPoolName()
-	if err := c.ensureNodeAndPool(poolName, lb); err != nil {
+	if err := c.ensureNodeAndPool("l7", lb); err != nil {
 		return err
+	}
+
+	if err := c.ensureNodeAndPool("l4", lb); err != nil {
+		return err
+	}
+
+	if tcp != nil && c.l4vs != nil {
+		newRule := c.generateL4Rule(tcp.Data)
+		return c.ensureIRule(newRule, c.l4vs.IRule)
 	}
 
 	return nil
@@ -168,32 +195,36 @@ func (c *f5LTMClient) DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 
 // EnsureIngress...
 func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error {
+	if lb == nil || lb.DeletionTimestamp != nil || c.l7vs == nil {
+		// DeleteLB will clean irule, so we do nothing here
+		log.Infof("Skip EnsureIngress %s because lb is deleted or has no l7vs", ing.Name)
+		return nil
+	}
+
 	err := refreshToken(&c.f5CommonClient)
 	if err != nil {
 		return err
 	}
+	newRule := c.generateL7Rule(ings)
+	return c.ensureIRule(newRule, c.l7vs.IRule)
+}
 
-	if lb == nil || lb.DeletionTimestamp != nil {
-		// DeleteLB will clean irule, so we do nothing here
-		log.Infof("Skip EnsureIngress %s because lb is deleted", ing.Name)
-		return nil
-	}
+func (c *f5LTMClient) generateL7Rule(ings []*v1beta1.Ingress) string {
+	itemsMap := make(map[string]bool)
 
-	domainsMap := make(map[string]bool)
-
-	for _, ing := range ings {
-		if ing == nil || ing.DeletionTimestamp != nil {
+	for _, i := range ings {
+		if i == nil || i.DeletionTimestamp != nil {
 			continue
 		}
-		for _, rule := range ing.Spec.Rules {
-			domainsMap[rule.Host] = true
+		for _, rule := range i.Spec.Rules {
+			itemsMap[rule.Host] = true
 		}
 	}
-	domains := make([]string, 0, len(domainsMap))
-	for h := range domainsMap {
-		domains = append(domains, h)
+	items := make([]string, 0, len(itemsMap))
+	for h := range itemsMap {
+		items = append(items, h)
 	}
-	sort.Strings(domains)
+	sort.Strings(items)
 
 	/*
 		ltm rule /Common/ruleA {
@@ -207,15 +238,13 @@ func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 		}
 	*/
 	// update irule content
-	poolName := c.getPoolName()
+	poolName := c.getPoolName("l7")
 	newRule := "# written by lb " + c.namePrefix
-	if len(domains) > 0 {
-		newRule += "\nwhen HTTP_REQUEST {\n  switch [HTTP::host] {\n"
-		for _, domain := range domains {
-			newRule += fmt.Sprintf("    \"%s\" { pool %s }\n", domain, poolName)
-		}
-		newRule += "  }\n}"
+	newRule += "\nwhen HTTP_REQUEST {\n  switch [HTTP::host] {\n"
+	for _, domain := range items {
+		newRule += fmt.Sprintf("    \"%s\" { pool %s }\n", domain, poolName)
 	}
+	newRule += "  }\n}"
 
 	/* // if-else
 	for i, domain := range domains {
@@ -231,12 +260,52 @@ func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 	}
 	newRule += "}"
 	*/
+	return newRule
+}
 
+func (c *f5LTMClient) generateL4Rule(l4rules map[string]string) string {
+	itemsMap := make(map[string]bool)
+
+	for p := range l4rules {
+		if _, err := strconv.Atoi(p); err == nil {
+			itemsMap[p] = true
+		}
+	}
+	items := make([]string, 0, len(itemsMap))
+	for h := range itemsMap {
+		items = append(items, h)
+	}
+	sort.Strings(items)
+
+	/*
+		ltm rule /Common/ruleA {
+			when HTTP_REQUEST {
+			  if { [HTTP::host] equals "hnet23.com" } {
+			    pool nodepool23
+			  } elseif { [HTTP::host] equals "hnet45.com" } {
+			    pool nodepool23
+			  }
+		    }
+		}
+	*/
+	// update irule content
+	poolName := c.getPoolName("l4")
+	newRule := "# written by lb " + c.namePrefix
+	newRule += "\nwhen CLIENT_ACCEPTED {\n  switch [TCP::local_port] {\n"
+	for _, port := range items {
+		newRule += fmt.Sprintf("    \"%s\" { pool %s }\n", port, poolName)
+	}
+	newRule += "    else { reject }\n"
+	newRule += "  }\n}"
+
+	return newRule
+}
+
+func (c *f5LTMClient) ensureIRule(newRule string, iruleName string) error {
 	// get irule
-	iruleName := c.getIRuleName()
 	obj, err := c.f5.IRule(iruleName)
 	if obj == nil && err == nil {
-		err = fmt.Errorf("iRule %s doesn't exist on vs %s", iruleName, c.virtualServer)
+		err = fmt.Errorf("iRule %s doesn't exist", iruleName)
 	}
 
 	if err != nil {
@@ -256,15 +325,11 @@ func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 	return nil
 }
 
-func (c *f5LTMClient) getIRuleName() string {
-	return c.irule
+func (c *f5LTMClient) getPoolName(l47 string) string {
+	return "P_Pool_" + c.namePrefix + l47 + "_pool"
 }
 
-func (c *f5LTMClient) getPoolName() string {
-	return "P_Pool_" + c.namePrefix + "pool"
-}
-
-func (c *f5LTMClient) ensurePool(name string) error {
+func (c *f5LTMClient) ensurePool(name, l47 string) error {
 	obj, err := c.f5.GetPool(name)
 
 	if err != nil {
@@ -273,9 +338,13 @@ func (c *f5LTMClient) ensurePool(name string) error {
 	}
 
 	if obj == nil {
+		monitor := "/Common/gateway_icmp"
+		if l47 == "l7" {
+			monitor = "/Common/http" // f5 default http monitor
+		}
 		config := &gobigip.Pool{
 			Name:    name,
-			Monitor: "/Common/http ", // f5 default http monitor
+			Monitor: monitor,
 		}
 		log.Infof("f5.AddPool %v", config)
 		err = c.f5.AddPool(config)
@@ -287,7 +356,8 @@ func (c *f5LTMClient) ensurePool(name string) error {
 	return nil
 }
 
-func (c *f5LTMClient) ensureNodeAndPool(poolName string, lb *lbapi.LoadBalancer) error {
+func (c *f5LTMClient) ensureNodeAndPool(l47 string, lb *lbapi.LoadBalancer) error {
+	poolName := c.getPoolName(l47)
 	ips := make(map[string]bool)
 
 	for _, n := range lb.Spec.Nodes.Names {
@@ -326,7 +396,7 @@ func (c *f5LTMClient) ensureNodeAndPool(poolName string, lb *lbapi.LoadBalancer)
 			return err
 		}
 	}
-	err = c.ensurePool(poolName)
+	err = c.ensurePool(poolName, l47)
 	if err != nil {
 		return err
 	}
@@ -337,10 +407,14 @@ func (c *f5LTMClient) ensureNodeAndPool(poolName string, lb *lbapi.LoadBalancer)
 		return err
 	}
 
+	poolPort := "0"
+	if l47 == "l7" {
+		poolPort = defaultHTTPPort
+	}
 	foundCount := 0
 	newPoolMembers := []gobigip.PoolMember{}
 	for ip := range ips {
-		memberName := ip + ":" + defaultHTTPPort
+		memberName := ip + ":" + poolPort
 		var pm *gobigip.PoolMember
 
 		for i := range poolMembers.PoolMembers {

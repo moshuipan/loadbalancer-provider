@@ -20,6 +20,7 @@ import (
 	"github.com/caicloud/clientset/kubernetes"
 	lblisters "github.com/caicloud/clientset/listers/loadbalance/v1alpha2"
 	lbapi "github.com/caicloud/clientset/pkg/apis/loadbalance/v1alpha2"
+	v1 "k8s.io/api/core/v1"
 	v1listers "k8s.io/client-go/listers/core/v1"
 	v1beta1listers "k8s.io/client-go/listers/extensions/v1beta1"
 )
@@ -34,7 +35,7 @@ type Provider interface {
 	// This avoid the use of the kubernetes client.
 	SetListers(StoreLister)
 	// OnUpdate callback invoked when loadbalancer changed
-	OnUpdate(*QueueObject, *lbapi.LoadBalancer) error
+	OnUpdate(*QueueObject, *lbapi.LoadBalancer, *v1.ConfigMap, *v1.ConfigMap) error
 	// Start starts the loadbalancer provider
 	Start()
 	// WaitForStart waits for provider fully run
@@ -100,6 +101,9 @@ type Configuration struct {
 	UDPConfigMap          string
 }
 
+// Following struct is from url:
+// https://github.com/caicloud/platform/pull/1175/files
+
 // DeviceList is a collection of devices
 type DeviceList struct {
 	//Meta  ListMeta `json:"metadata"`
@@ -146,22 +150,39 @@ type DeviceConfig struct {
 	ForbiddenList string `json:"forbiddenList,omitempty"`
 	// ZoneList
 	ZoneList string `json:"zoneList,omitempty"`
+
+	// Infoblox DNS
+	// APIVersion
+	APIVersion string `json:"apiVersion,omitempty"`
+
+	// F5 DNS
 	// pool
 	//Pool string `json:"pool,omitempty"`
 	// PoolPrefix
 	PoolPrefix string `json:"poolPrefix,omitempty"`
-	// IRule
-	IRule string `json:"iRule,omitempty"`
 	// VirtualServerList
 	VirtualServerList string `json:"virtualServerList,omitempty"`
-	// APIVersion
-	APIVersion string `json:"apiVersion,omitempty"`
+
+	// LTMVSList
+	LTMVSList []LTMVirtualServer `json:"ltmVirtualServerList,omitempty"`
+}
+
+// LTMVirtualServer ...
+type LTMVirtualServer struct {
+	// IP
+	IP string `json:"ip,omitempty"`
+	// IRule
+	IRule string `json:"irule,omitempty"`
+	// Name
+	Name string `json:"name,omitempty"`
+	// Type L4/L7
+	Type string `json:"type,omitempty"`
 }
 
 // Record represents a dns record
 type Record struct {
 	// Host
-	//Host string `json:"host"`
+	Host string `json:"host"`
 	// Addr
 	Addr string `json:"addr"` // vs or ip
 	// DNSName

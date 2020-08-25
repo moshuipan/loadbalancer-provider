@@ -7,7 +7,6 @@ import (
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
 	ibclient "github.com/infobloxopen/infoblox-go-client"
-	v1beta1 "k8s.io/api/extensions/v1beta1"
 	log "k8s.io/klog"
 )
 
@@ -82,7 +81,8 @@ type infobloxDNSClient struct {
 	client    *ibclient.ObjectManager
 	connector *ibclient.Connector
 
-	lbname string
+	lbname    string
+	rule2Host map[string]string
 }
 
 func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
@@ -123,78 +123,106 @@ func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient
 		client:    client,
 		connector: conn,
 		lbname:    fmt.Sprintf("%s.%s", lbnamespace, lbname),
+		rule2Host: make(map[string]string),
 	}
 
 	return &c, nil
 }
 
-func (c *infobloxDNSClient) EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
-	hostName := ""
-	for _, r := range ing.Spec.Rules {
-		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {
-			hostName = r.Host
-		} else {
-			log.Warningf("skip ingress host: %s, zone: %s", r.Host, dns.Zone)
+func (c *infobloxDNSClient) cacheRuleHost(dns *dnsInfo, hostName string) {
+	for _, r := range dns.rules {
+		if hostName == "" {
+			delete(c.rule2Host, r)
+			continue
 		}
+		c.rule2Host[r] = hostName
 	}
-
-	var err error
-	if hostName != "" {
-		err = c.ensureHost(hostName, dns.Addr, dns.Zone)
-	}
-
-	return err
 }
 
-func (c *infobloxDNSClient) DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
-	hostName := ""
-	for _, r := range ing.Spec.Rules {
-		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {
-			hostName = r.Host
-		} else {
-			log.Warningf("skip ingress host: %s, zone: %s", r.Host, dns.Zone)
+func (c *infobloxDNSClient) loadRuleHost(ruleName string) string {
+	return c.rule2Host[ruleName]
+}
+
+func (c *infobloxDNSClient) EnsureIngress(dns *dnsInfo) error {
+	var err error
+	oldHostName := c.loadRuleHost(dns.rules[0])
+
+	// handle hostName change
+	if oldHostName != "" && oldHostName != dns.hostName {
+		log.Warningf("host name change")
+		err = c.deleteHost(oldHostName)
+		if err != nil {
+			log.Warningf("Failed to delete old hostName %s:%v", oldHostName, err)
 		}
+		c.cacheRuleHost(dns, "")
 	}
-	if hostName != "" {
-		return c.deleteHost(hostName)
+
+	if dns.hostName != "" {
+		err = c.ensureHost(dns.hostName, dns)
+		if err != nil {
+			return err
+		}
+		c.cacheRuleHost(dns, dns.hostName)
 	}
+
 	return nil
 }
 
-func (c *infobloxDNSClient) getKeyCommnet() string {
-	return fmt.Sprintf("# updated by =%s=", c.lbname)
+func (c *infobloxDNSClient) DeleteIngress(dns *dnsInfo) error {
+	var err error
+	if dns.hostName != "" {
+		err = c.deleteHost(dns.hostName)
+		if err != nil {
+			return err
+		}
+		c.cacheRuleHost(dns, "")
+	}
+
+	return nil
 }
 
-func (c *infobloxDNSClient) ensureHost(hostName string, addr string, zone string) error {
+func (c *infobloxDNSClient) ensureHost(hostName string, d *dnsInfo) error {
 	var err error
+
+	if d.Zone == "" || !strings.HasSuffix(d.hostName, d.Zone) {
+		log.Errorf("DNS record has an invalid zone: %v", d)
+		return fmt.Errorf("invalid zone")
+	}
+
 	view, err := c.getActiveView()
 	if err != nil {
 		log.Errorf("Failed to get active view for %s, err:%v", hostName, err)
 		return err
 	}
-	comment := c.getKeyCommnet()
+	comment := serializeMetadata(c.lbname, d)
 	rec, _ := c.getRecord(hostName, view)
 	if rec != nil {
-		if rec.Ipv4Addr == addr {
+		thisLB, _ := c.checkOwner(rec.Comment)
+		if !thisLB || rec.Ipv4Addr != d.Addr {
+			log.Errorf("Failed to ensure conflict host %s on f5, rec.ip %s, desire %s", hostName, rec.Ipv4Addr, d.Addr)
+			return fmt.Errorf("conflict domain name")
+		}
+
+		if rec.Ipv4Addr == d.Addr && rec.Comment == comment {
 			return nil
 		}
 
-		log.Infof("ibclient.UpdateARecord view:%s, hostName:%s, ip:%s->%s, ref:%s", view, hostName, rec.Ipv4Addr, addr, rec.Ref)
-		_, err = c.client.UpdateARecord(ibclient.RecordA{Ref: rec.Ref, Ipv4Addr: addr, Comment: comment})
+		log.Infof("ibclient.UpdateARecord view:%s, hostName:%s, ip:%s->%s, comment: %s, ref:%s", view, hostName, rec.Ipv4Addr, d.Addr, comment, rec.Ref)
+		_, err = c.client.UpdateARecord(ibclient.RecordA{Ref: rec.Ref, Ipv4Addr: d.Addr, Comment: comment})
 		if err != nil {
 			log.Errorf("Failed to udpate record %s, err:%v", hostName, err)
 		}
 		return err
 	}
 
-	_, err = c.getZoneAuth(view, zone)
+	_, err = c.getZoneAuth(view, d.Zone)
 	if err != nil {
-		log.Errorf("Failed to get zone %s in view %s for %s, err:%v", zone, view, hostName, err)
+		log.Errorf("Failed to get zone %s in view %s for %s, err:%v", d.Zone, view, hostName, err)
 		return err
 	}
 
-	log.Infof("ibclient.CreateARecord view:%s, hostName:%s, ip:%s, comment: %s", view, hostName, addr, comment)
-	_, err = c.client.CreateARecord(ibclient.RecordA{Name: hostName, Ipv4Addr: addr, Comment: comment, View: view})
+	log.Infof("ibclient.CreateARecord view:%s, hostName:%s, ip:%s, comment: %s", view, hostName, d.Addr, comment)
+	_, err = c.client.CreateARecord(ibclient.RecordA{Name: hostName, Ipv4Addr: d.Addr, Comment: comment, View: view})
 	if err != nil {
 		log.Errorf("Failed to create record %s, err:%v", hostName, err)
 	}
@@ -217,6 +245,13 @@ func (c *infobloxDNSClient) deleteHost(hostName string) error {
 	}
 
 	if rec != nil {
+		thisLB, _ := c.checkOwner(rec.Comment)
+		if !thisLB {
+			log.Errorf("Failed to ensure host because of conflict domain name %s on f5", hostName)
+			return nil
+		}
+		//TODO
+
 		log.Infof("ibclient.DeleteARecord view:%s, hostName:%s, ip:%s, ref:%s", view, hostName, rec.Ipv4Addr, rec.Ref)
 		_, err = c.client.DeleteARecord(ibclient.RecordA{Ref: rec.Ref})
 		if err != nil {
@@ -241,17 +276,64 @@ func (c *infobloxDNSClient) getRecord(hostName, view string) (*ibclient.RecordA,
 	if recs == nil {
 		return nil, fmt.Errorf("%s for %s", notFoundError, hostName)
 	}
-	comment := c.getKeyCommnet()
-	for i, rec := range *recs {
-		if strings.Contains(rec.Comment, comment) {
-			return &((*recs)[i]), nil
-		}
-	}
 
 	if len(*recs) == 1 {
-		log.Warningf("An unmatched comment record returned %+v", (*recs)[0])
 		return &((*recs)[0]), nil
 	}
 
 	return nil, fmt.Errorf("Too Many records for %s: num=%v", hostName, len(*recs))
+}
+
+func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
+	var err error
+	log.Infof("EnsureDNSRecords %s dl: %v", l47, dnsInfos)
+
+	for _, d := range *dnsInfos {
+		if d.status == "" {
+			err = c.ensureHost(d.hostName, d)
+			if err != nil {
+				d.status = err.Error()
+				continue
+			} else {
+				d.status = "ok"
+			}
+		}
+	}
+
+	view, err := c.getActiveView()
+	if err != nil {
+		log.Errorf("Failed to get active view for err:%v", err)
+		return err
+	}
+	recs, err := c.client.GetARecord(ibclient.RecordA{View: view})
+	if err != nil {
+		return err
+	}
+	for _, rec := range *recs {
+		thisLB, d := c.checkOwner(rec.Comment)
+		if !thisLB || d.l47 != l47 {
+			continue
+		}
+		found := false
+		for _, d := range *dnsInfos {
+			if d.hostName == rec.Name {
+				found = true
+				d.status = "ok"
+				break
+			}
+		}
+		if !found {
+			log.Warningf("Has orphan record %v, try to delete it", rec)
+			_ = c.deleteHost(rec.Name)
+		}
+	}
+	return nil
+}
+
+func (c *infobloxDNSClient) checkOwner(info string) (bool, *dnsInfo) {
+	lb, d := unserializeMetadata(info)
+	if lb != c.lbname {
+		return false, d
+	}
+	return true, d
 }

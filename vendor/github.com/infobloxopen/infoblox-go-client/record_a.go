@@ -114,6 +114,7 @@ func (objMgr *ObjectManager) UpdateARecord(recA RecordA) (*RecordA, error) {
 	}
 	res.Name = recA.Name
 	res.Ipv4Addr = recA.Ipv4Addr
+	res.Comment = recA.Comment
 	for k, v := range recA.AddEA {
 		res.Ea[k] = v
 	}

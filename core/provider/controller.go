@@ -331,7 +331,7 @@ func (p *GenericProvider) updateConfigMap(oldObj, curObj interface{}) {
 		return
 	}
 
-	if reflect.DeepEqual(old.Data, cur.Data) {
+	if reflect.DeepEqual(old.Data, cur.Data) && reflect.DeepEqual(old.Annotations, cur.Annotations) {
 		// nothing changed
 		return
 	}
@@ -410,8 +410,26 @@ func (p *GenericProvider) syncLoadBalancer(obj interface{}) error {
 
 	queueObject.Object = lb
 
+	// workaroud: to simple the code, pass the cm
+	var tcpCM, udpCM *v1.ConfigMap
+	if p.listers.ConfigMap != nil {
+		tcpCM, err = p.listers.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.TCPConfigMap)
+		if err != nil {
+			log.Warningf("Failed to get tcp configmap, error: %v", err)
+		}
+		udpCM, err = p.listers.ConfigMap.ConfigMaps(lb.Namespace).Get(lb.Status.ProxyStatus.UDPConfigMap)
+		if err != nil {
+			log.Warningf("Failed to get udp configmap, error: %v", err)
+		}
+	}
+	// we do not use handler for other kind, so consider all other events as if lb update
+	if queueObject.Kind != QueueObjectLoadbalancer {
+		queueObject.Kind = QueueObjectLoadbalancer
+		queueObject.Event = QueueObjectEventUpdate
+	}
+
 	log.Infof("OnUpdate %+v ......", queueObject)
-	return p.cfg.Backend.OnUpdate(queueObject, lb)
+	return p.cfg.Backend.OnUpdate(queueObject, lb, tcpCM, udpCM)
 }
 
 func (p *GenericProvider) syncIngress(queueObject *QueueObject) error {
@@ -446,5 +464,5 @@ func (p *GenericProvider) syncIngress(queueObject *QueueObject) error {
 	queueObject.Object = ing
 
 	log.Infof("OnUpdate %+v ......", queueObject)
-	return p.cfg.Backend.OnUpdate(queueObject, lb) // lb may be nil, but we still need to handle ingress deleting
+	return p.cfg.Backend.OnUpdate(queueObject, lb, nil, nil) // lb may be nil, but we still need to handle ingress deleting
 }

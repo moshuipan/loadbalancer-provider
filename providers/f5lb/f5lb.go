@@ -14,6 +14,7 @@ import (
 	"github.com/caicloud/loadbalancer-provider/core/provider"
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
+	v1 "k8s.io/api/core/v1"
 	v1beta1 "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,15 +69,16 @@ const (
 type LBClient interface {
 	SetListers(core.StoreLister)
 	DeleteLB(lb *lbapi.LoadBalancer) error
-	EnsureLB(lb *lbapi.LoadBalancer) error
+	EnsureLB(lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error
 	EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error
 	DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error
 }
 
 // DNSClient ...
 type DNSClient interface {
-	EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) error
-	DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) error
+	EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error
+	EnsureIngress(dns *dnsInfo) error
+	DeleteIngress(dns *dnsInfo) error
 }
 
 const (
@@ -99,6 +101,7 @@ type Provider struct {
 	phase string
 
 	lb        *lbapi.LoadBalancer
+	tcpCM     *v1.ConfigMap
 	startTime string
 }
 
@@ -189,6 +192,32 @@ func (p *Provider) WatchKinds() []core.QueueObjectKind {
 	return []core.QueueObjectKind{core.QueueObjectLoadbalancer, core.QueueObjectConfigmap, core.QueueObjectNode, core.QueueObjectIngress}
 }
 
+func (p *Provider) isConfigMapUpdate(cur *v1.ConfigMap) bool {
+	old := p.tcpCM
+	if old == nil {
+		return true
+	}
+	if old.ResourceVersion >= cur.ResourceVersion {
+		return false
+	}
+
+	oldDNSInfo := ""
+	newDNSInfo := ""
+	if old.Annotations != nil {
+		oldDNSInfo = old.Annotations[ingressDNSInfoKey]
+	}
+	if cur.Annotations != nil {
+		newDNSInfo = cur.Annotations[ingressDNSInfoKey]
+	}
+
+	if !reflect.DeepEqual(old.Data, cur.Data) ||
+		oldDNSInfo != newDNSInfo {
+		return true
+	}
+
+	return false
+}
+
 func (p *Provider) isLBNeedUpdate(cur *lbapi.LoadBalancer) bool {
 	old := p.lb
 	if old == nil {
@@ -203,6 +232,7 @@ func (p *Provider) isLBNeedUpdate(cur *lbapi.LoadBalancer) bool {
 		!reflect.DeepEqual(old.DeletionTimestamp, cur.DeletionTimestamp) {
 		return true
 	}
+
 	return false
 }
 
@@ -210,7 +240,7 @@ func (p *Provider) updatePhase(lb *lbapi.LoadBalancer) error {
 	var err error
 	if p.phase == phaseUninitiaized {
 		if lb.DeletionTimestamp == nil {
-			err = p.onUpdateLB(core.QueueObjectEventAdd, lb)
+			err = p.onUpdateLB(core.QueueObjectEventAdd, lb, nil)
 			if err != nil {
 				return err
 			}
@@ -224,7 +254,7 @@ func (p *Provider) updatePhase(lb *lbapi.LoadBalancer) error {
 }
 
 // OnUpdate ...
-func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
+func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, tcpCM *v1.ConfigMap, udpCM *v1.ConfigMap) error {
 	var err error
 	oldPhase := p.phase
 
@@ -241,16 +271,17 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
 	}
 
 	if o.Kind == core.QueueObjectLoadbalancer {
-		if p.isLBNeedUpdate(lb) {
-			err = p.onUpdateLB(o.Event, lb)
+		if p.isLBNeedUpdate(lb) || p.isConfigMapUpdate(tcpCM) {
+			err = p.onUpdateLB(o.Event, lb, tcpCM)
 			if err != nil {
 				return err
 			}
-			_ = p.onUpdateLBDNS(o)
+			err = p.onUpdateLBDNS(o, tcpCM)
 		}
 
 		// cache new lb
-		p.lb = lb
+		p.lb = lb.DeepCopy()
+		p.tcpCM = tcpCM.DeepCopy()
 	}
 
 	if o.Kind == core.QueueObjectIngress {
@@ -358,12 +389,12 @@ func (p *Provider) SetListers(lister core.StoreLister) {
 	p.client.SetListers(lister)
 }
 
-func (p *Provider) onUpdateLB(e core.QueueObjectEvent, lb *lbapi.LoadBalancer) error {
+func (p *Provider) onUpdateLB(e core.QueueObjectEvent, lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error {
 	var err error
 	if e == core.QueueObjectEventDelete || p.phase == phaseDeleted {
 		err = p.client.DeleteLB(lb)
 	} else {
-		err = p.client.EnsureLB(lb)
+		err = p.client.EnsureLB(lb, tcp)
 	}
 	return err
 }
@@ -386,16 +417,37 @@ func (p *Provider) onUpdateIngress(o *core.QueueObject, lb *lbapi.LoadBalancer) 
 	return err
 }
 
-// onUpdateLBDNS to delete all dns record by lb
-func (p *Provider) onUpdateLBDNS(o *core.QueueObject) error {
+// onUpdateLBDNS to all dns record by lb
+func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) error {
 	if o.Kind != core.QueueObjectLoadbalancer {
 		return nil
 	}
 
 	if p.phase != phaseDeleted {
+		err := p.updateL4DNS(tcpCM)
+		if err != nil {
+			log.Errorf("Failed to update L4 dns: %v", err)
+		}
+		//TODO handle error
+		//TODO resync all l7
 		return nil
 	}
 
+	// clean All records
+	for _, d := range p.dnsClients {
+		var err error
+		ds := dnsInfoList{}
+		err = d.EnsureDNSRecords(&ds, "l4")
+		if err != nil {
+			log.Errorf("Failed to clean L4 dns: %v", err)
+		}
+		err = d.EnsureDNSRecords(&ds, "l7")
+		if err != nil {
+			log.Errorf("Failed to clean L7 dns: %v", err)
+		}
+	}
+
+	//TODO remove code
 	selector := labels.Set{lbapi.LabelKeyCreatedBy: fmt.Sprintf("%s.%s", p.loadBalancerNamespace, p.loadBalancerName)}.AsSelector()
 	ings, err := p.storeLister.Ingress.List(selector)
 	if err != nil {
@@ -429,34 +481,61 @@ func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 		return nil
 	}
 
-	var dnsInfo []provider.Record
-	if err := json.Unmarshal([]byte(s), &dnsInfo); err != nil {
-		log.Errorf("Failed to Unmarshal ingress %s dnsInfo: %s", ing.Name, s)
+	ds, err := getIngressDNSRecord(ing)
+	if err != nil {
 		return err
 	}
 
-	var firstError error
-	for _, dns := range dnsInfo {
-		var err error
-		client, ok := p.dnsClients[dns.DNSName]
+	for _, d := range ds {
+		client, ok := p.dnsClients[d.DNSName]
 		if !ok {
-			log.Errorf("dns %s not found for ingress %s", dns.DNSName, ing.Name)
-			continue
+			log.Errorf("dns %s not found for ingress %s", d.DNSName, ing.Name)
+			err = fmt.Errorf("invalid dns server %s", d.DNSName)
+			break
 		}
 
 		if add {
-			err = client.EnsureIngress(ing, &dns)
+			err = client.EnsureIngress(d)
 		} else {
-			err = client.DeleteIngress(ing, &dns)
+			err = client.DeleteIngress(d)
 		}
 		if err != nil {
 			log.Errorf("Failed to update Ingress %s:%v", ing.Name, err)
-			if firstError == nil {
-				firstError = err
-			}
+			break
 		}
 	}
-	return firstError
+	return err
+}
+
+func (p *Provider) updateConfigMapStatus(tcpCM *v1.ConfigMap, data map[string]string) {
+	cmName := tcpCM.Name + "-status"
+	cur, err := p.clientset.CoreV1().ConfigMaps(tcpCM.Namespace).Get(cmName, metav1.GetOptions{})
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			log.Errorf("Failed to get lb %s/%s when update status %v", tcpCM.Namespace, cmName, err)
+			return
+		}
+		cm := &v1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   cmName,
+				Labels: tcpCM.Labels,
+			},
+			Data: data,
+		}
+		log.Infof("About to create ConfigMap %v/%v: %v", tcpCM.Namespace, cmName, data)
+		_, err = p.clientset.CoreV1().ConfigMaps(tcpCM.Namespace).Create(cm)
+		if err != nil {
+			log.Errorf("Failed to create cm status: %v", err)
+		}
+		return
+	}
+
+	cur.Data = data
+	log.Infof("About to update ConfigMap %v/%v: %v", tcpCM.Namespace, cmName, data)
+	_, err = p.clientset.CoreV1().ConfigMaps(tcpCM.Namespace).Update(cur)
+	if err != nil {
+		log.Errorf("Failed to update cm status: %v", err)
+	}
 }
 
 func (p *Provider) updateLBStatus(namespace, name string, e error) {
@@ -502,4 +581,70 @@ func (p *Provider) updateLBStatus(namespace, name string, e error) {
 		log.Errorf("Failed to update lb %s/%s, error: %v", namespace, name, err)
 	}
 
+}
+
+// onUpdateLBDNS2 to delete all dns record by lb
+func (p *Provider) updateL4DNS(tcpCM *v1.ConfigMap) error {
+	dnsInfos, err := getConfigMapDNSRecord(tcpCM)
+	if err != nil {
+		log.Errorf("Failed to parse L4 dns record")
+		return err
+	}
+
+	dlm := make(dnsInfoListMap)
+	for _, d := range dnsInfos {
+		dl, ok := dlm[d.DNSName]
+		if !ok {
+			dl = &dnsInfoList{d}
+			dlm[d.DNSName] = dl
+			continue
+		}
+
+		var dd *dnsInfo
+		for _, d2 := range *dl {
+			if d2.hostName == d.hostName && d2.Addr == d.Addr {
+				dd = d2
+				break
+			}
+		}
+		if dd != nil {
+			dd.rules = append(dd.rules, d.rules[0])
+		} else {
+			*dl = append(*dl, d)
+			dlm[d.DNSName] = dl
+		}
+	}
+
+	status := make(map[string]string)
+
+	for device, client := range p.dnsClients {
+		var err error
+		ds, ok := dlm[device]
+		if !ok {
+			ds = &dnsInfoList{}
+		}
+		err = client.EnsureDNSRecords(ds, "l4")
+		s := "ok"
+		if err != nil {
+			s = err.Error()
+		}
+
+		for _, d := range *ds {
+			if d.status != "" {
+				s = d.status
+			}
+
+			for _, p := range d.rules {
+				m := make(map[string]string)
+				m["host"] = d.hostName
+				m["message"] = s
+				bs, _ := json.Marshal(m)
+				status[p] = string(bs)
+			}
+		}
+	}
+
+	p.updateConfigMapStatus(tcpCM, status)
+
+	return nil
 }

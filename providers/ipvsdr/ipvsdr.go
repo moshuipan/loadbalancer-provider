@@ -31,6 +31,7 @@ import (
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	log "github.com/zoumo/logdog"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/flowcontrol"
 	utildbus "k8s.io/kubernetes/pkg/util/dbus"
@@ -128,7 +129,7 @@ func (p *Provider) WatchKinds() []core.QueueObjectKind {
 }
 
 // OnUpdate ...
-func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
+func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, t *v1.ConfigMap, u *v1.ConfigMap) error {
 	p.reloadRateLimiter.Accept()
 
 	if err := lbapi.ValidateLoadBalancer(lb); err != nil {

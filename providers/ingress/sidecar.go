@@ -22,6 +22,7 @@ import (
 	core "github.com/caicloud/loadbalancer-provider/core/provider"
 	"github.com/caicloud/loadbalancer-provider/pkg/version"
 	log "github.com/zoumo/logdog"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -86,7 +87,7 @@ func (p *Sidecar) WatchKinds() []core.QueueObjectKind {
 }
 
 // OnUpdate ...
-func (p *Sidecar) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
+func (p *Sidecar) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, t *v1.ConfigMap, u *v1.ConfigMap) error {
 
 	return nil
 }

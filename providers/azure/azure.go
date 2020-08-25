@@ -11,6 +11,7 @@ import (
 	"github.com/Azure/go-autorest/autorest"
 	"github.com/Azure/go-autorest/autorest/to"
 	log "github.com/zoumo/logdog"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -91,7 +92,7 @@ func (l *Provider) WatchKinds() []core.QueueObjectKind {
 }
 
 // OnUpdate update loadbalancer
-func (l *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer) error {
+func (l *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, t *v1.ConfigMap, u *v1.ConfigMap) error {
 
 	log.Infof("OnUpdate......")
 	if lb.Spec.Providers.Azure == nil {

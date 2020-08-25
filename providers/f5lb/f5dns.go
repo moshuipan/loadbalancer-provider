@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
-	v1beta1 "k8s.io/api/extensions/v1beta1"
 	log "k8s.io/klog"
 )
 
@@ -19,6 +18,7 @@ type f5DNSClient struct {
 	//virtualServers [][]string
 	poolPrefix string
 	lbname     string
+	rule2Host  map[string]string
 }
 type f5CommonClient struct {
 	f5 *gobigip.BigIP
@@ -76,6 +76,7 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	lbclient := &f5DNSClient{
 		poolPrefix: d.Config.PoolPrefix,
 		lbname:     fmt.Sprintf("%s.%s", lbname, lbnamespace),
+		rule2Host:  make(map[string]string),
 	}
 	lbclient.d = d
 
@@ -93,43 +94,105 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	return lbclient, nil
 }
 
-func (c *f5DNSClient) EnsureIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
+func (c *f5DNSClient) EnsureAllIngress(dnsInfos dnsInfoList) error {
+
+	// ensure all firstly
+	var err error
+	for _, d := range dnsInfos {
+		if d.l47 != "l7" {
+			log.Warningf("skip dnsinfo %+v for f5dns, because it's not l4", d)
+			continue
+		}
+		if d.status == "" {
+			log.Warningf("Has unset dns %s, try to set it", d.hostName)
+			err = c.ensureHost(d.hostName, d)
+			if err != nil {
+				d.status = err.Error()
+				continue
+			} else {
+				c.cacheRuleHost(d, d.hostName)
+				d.status = "ok"
+			}
+		}
+	}
+
+	// delete all orphan hostName
+	wips, err := c.f5.GetGTMWideIPs()
+	if err != nil || wips == nil {
+		return err
+	}
+	for _, wip := range wips.GTMWideIPs {
+		thisLB, dd := c.checkOwner(wip.Description)
+		if !thisLB || dd.l47 != "l7" {
+			continue
+		}
+		found := false
+		for i := range dnsInfos {
+			if dnsInfos[i].hostName == wip.Name {
+				found = true
+				dnsInfos[i].status = "ok"
+				break
+			}
+		}
+		if !found {
+			log.Warningf("Has orphan wip %s, try to delete it", wip.Name)
+			_ = c.deleteHost(wip.Name)
+		}
+	}
+	return nil
+}
+
+func (c *f5DNSClient) cacheRuleHost(dns *dnsInfo, hostName string) {
+	for _, r := range dns.rules {
+		if hostName == "" {
+			delete(c.rule2Host, r)
+			continue
+		}
+		c.rule2Host[r] = hostName
+	}
+}
+func (c *f5DNSClient) loadRuleHost(ruleName string) string {
+	return c.rule2Host[ruleName]
+}
+func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
 	err := refreshToken(&c.f5CommonClient)
 	if err != nil {
 		return err
 	}
-	hostName := ""
-	for _, r := range ing.Spec.Rules {
-		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {
-			hostName = r.Host
-		} else {
-			log.Warningf("skip ingress host: %s, zone: %s", r.Host, dns.Zone)
+
+	oldHostName := c.loadRuleHost(dns.rules[0])
+
+	// handle hostName change
+	if oldHostName != "" && oldHostName != dns.hostName {
+		log.Warningf("host name change")
+		err = c.deleteHost(oldHostName)
+		if err != nil {
+			return err
 		}
 	}
 
-	if hostName != "" {
-		virtualServers := strings.Split(dns.Addr, ",")
-		return c.ensureHost(hostName, virtualServers)
+	if dns.hostName != "" {
+		err = c.ensureHost(dns.hostName, dns)
+		if err != nil {
+			return err
+		}
+		c.cacheRuleHost(dns, dns.hostName)
 	}
 
 	return nil
 }
 
-func (c *f5DNSClient) DeleteIngress(ing *v1beta1.Ingress, dns *provider.Record) error {
+func (c *f5DNSClient) DeleteIngress(dns *dnsInfo) error {
 	err := refreshToken(&c.f5CommonClient)
 	if err != nil {
 		return err
 	}
-	hostName := ""
-	for _, r := range ing.Spec.Rules {
-		if dns.Zone != "" && strings.HasSuffix(r.Host, dns.Zone) {
-			hostName = r.Host
-		} else {
-			log.Warningf("skip ingress host: %s, zone: %s", r.Host, dns.Zone)
+	if dns.hostName != "" {
+		err = c.deleteHost(dns.hostName)
+		if err != nil {
+			return err
 		}
-	}
-	if hostName != "" {
-		return c.deleteHost(hostName)
+		c.cacheRuleHost(dns, "")
 	}
 	return nil
 }
@@ -145,7 +208,7 @@ func (c *f5DNSClient) getPoolName(hostName string) string {
 	return c.poolPrefix + "_" + name
 }
 
-func (c *f5DNSClient) ensurePool(name string) (*gobigip.GTMAPool, error) {
+func (c *f5DNSClient) ensurePool(name string, desc string) (*gobigip.GTMAPool, error) {
 	obj, err := c.f5.GetGTMAPool(name)
 
 	if err != nil {
@@ -156,7 +219,7 @@ func (c *f5DNSClient) ensurePool(name string) (*gobigip.GTMAPool, error) {
 	if obj == nil {
 		config := &gobigip.GTMAPool{
 			Name:              name,
-			Description:       fmt.Sprintf("create by %s.", c.lbname),
+			Description:       desc,
 			Monitor:           "/Common/gateway_icmp",
 			LoadBalancingMode: "topology",
 			FallbackMode:      "global-availability",
@@ -182,6 +245,17 @@ func (c *f5DNSClient) deleteHost(hostName string) error {
 		log.Errorf("Failed to GetGTMWideIP %s when delete: %v ", hostName, err)
 		return err
 	}
+
+	if wip != nil {
+		thisLB, _ := c.checkOwner(wip.Description)
+		if !thisLB {
+			log.Warningf("skip delete dns record because of conflict domain %s on f5", hostName)
+			return nil
+		}
+		//TODO
+		//d0.rules
+	}
+
 	if wip != nil {
 		log.Infof("f5.DeleteGTMWideIP %s", hostName)
 		err = c.f5.DeleteGTMWideIP(hostName)
@@ -208,11 +282,32 @@ func (c *f5DNSClient) deleteHost(hostName string) error {
 	return nil
 }
 
-func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error {
-	poolName := c.getPoolName(hostName)
+func (c *f5DNSClient) ensureHost(hostName string, d *dnsInfo) error {
+	var err error
+	if d.Zone == "" || !strings.HasSuffix(d.hostName, d.Zone) {
+		log.Errorf("DNS record has an invalid zone: %v", d)
+		return fmt.Errorf("invalid zone")
+	}
 
+	// ensure wide ip
+	wip, err := c.f5.GetGTMWideIP(hostName)
+	if err != nil {
+		log.Errorf("Failed to get WIP %s: %v ", hostName, err)
+		return err
+	}
+
+	if wip != nil {
+		thisLB, _ := c.checkOwner(wip.Description)
+		if !thisLB {
+			log.Errorf("Failed to ensure host because of conflict domain name %s on f5", hostName)
+			return fmt.Errorf("conflict domain name")
+		}
+	}
+
+	poolName := c.getPoolName(hostName)
+	description := serializeMetadata(c.lbname, d)
 	// ensure pool
-	_, err := c.ensurePool(poolName)
+	_, err = c.ensurePool(poolName, description)
 	if err != nil {
 		return err
 	}
@@ -226,7 +321,7 @@ func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error
 
 	deleted := []gobigip.GTMAPoolMember{}
 	var added [][]string
-	for _, vsname := range virtualServers {
+	for _, vsname := range strings.Split(d.Addr, ",") {
 		sps := strings.SplitN(vsname, ":", 2)
 		if len(sps) != 2 {
 			log.Errorf("Incorrect vs name format: %s", vsname)
@@ -270,19 +365,13 @@ func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error
 		}
 	}
 
-	// ensure wide ip
-	wip, err := c.f5.GetGTMWideIP(hostName)
-	if err != nil {
-		log.Errorf("Failed to get WIP %s: %v ", hostName, err)
-	}
-
 	pools := []gobigip.GTMWideIPPool{
 		{Name: poolName},
 	}
 	o := gobigip.GTMWideIP{
 		Name:        hostName,
 		Pools:       &pools,
-		Description: fmt.Sprintf("create by %s.", c.lbname),
+		Description: description,
 	}
 	if wip == nil {
 		log.Infof("f5.AddGTMWideIP %s, %+v", hostName, pools)
@@ -293,6 +382,7 @@ func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error
 		}
 	} else {
 		wip.Pools = &pools
+		wip.Description = description
 		log.Infof("f5.ModifyGTMWideIP %s, %+v", hostName, pools)
 		err = c.f5.ModifyGTMWideIP(hostName, wip)
 		if err != nil {
@@ -300,5 +390,10 @@ func (c *f5DNSClient) ensureHost(hostName string, virtualServers []string) error
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
+	//TODO
 	return nil
 }
