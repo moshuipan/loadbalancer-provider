@@ -42,7 +42,7 @@
 
 [[projects]]
   branch = "release-1.14-oem-infinitus"
-  digest = "1:e989ff427e5a3ea0b80253cd32f822cc66d2c6054ab196090033d025f469cf18"
+  digest = "1:de21391d45c5d7a2d422ac2ffe0f4ccd6a0bf08363f7c7209756b99e0266357f"
   name = "github.com/caicloud/clientset"
   packages = [
     "informers",
@@ -181,7 +181,7 @@
     "util/syncqueue",
   ]
   pruneopts = "NUT"
-  revision = "d287992bac5e7a4dbaac26d360de6d267a34c846"
+  revision = "1cafed682cc3d6a47825758cba5b28d602bbbf5b"
 
 [[projects]]
   digest = "1:c0eec4f5d71d69aace7ac33d0b787f03825baa0ac9528a14c066e356121070a0"
@@ -318,11 +318,11 @@
 
 [[projects]]
   branch = "release-11.x"
-  digest = "1:a988f8e38015ac005d77e94d618182e7642021a9b031f8d6220f9374b7d4b956"
+  digest = "1:6f2129a9e4aeff65396c8ae0cbd14209e17b7368d1c0621af5bd8c4d690e99f0"
   name = "github.com/hanxueluo/go-bigip"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "881913ab571e65eac1894f50cdaf0f6e7060449c"
+  revision = "62295bcc82f6248f433c07cbe3c560b909f6d2e5"
 
 [[projects]]
   digest = "1:9676627451831e0d8e347007d871eac494ce51d55b95a3fe1fac30ad8d717ab9"
