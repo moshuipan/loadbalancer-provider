@@ -154,23 +154,25 @@ func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
 
 // EnsureLB...
 func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error {
-	//lb.Status.ProxyStatus.TCPConfigMap
-	_, err := c.f5.GetVirtualServer(c.l7vs.Name)
-	if err != nil {
-		return err
+	if c.l7vs != nil {
+		_, err := c.f5.GetVirtualServer(c.l7vs.Name)
+		if err != nil {
+			return err
+		}
+		if err := c.ensureNodeAndPool("l7", lb); err != nil {
+			return err
+		}
 	}
 
-	if err := c.ensureNodeAndPool("l7", lb); err != nil {
-		return err
-	}
+	if c.l4vs != nil {
+		if err := c.ensureNodeAndPool("l4", lb); err != nil {
+			return err
+		}
 
-	if err := c.ensureNodeAndPool("l4", lb); err != nil {
-		return err
-	}
-
-	if tcp != nil && c.l4vs != nil {
-		newRule := c.generateL4Rule(tcp.Data)
-		return c.ensureIRule(newRule, c.l4vs.IRule)
+		if tcp != nil {
+			newRule := c.generateL4Rule(tcp.Data)
+			return c.ensureIRule(newRule, c.l4vs.IRule)
+		}
 	}
 
 	return nil
