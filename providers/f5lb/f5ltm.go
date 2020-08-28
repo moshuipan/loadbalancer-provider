@@ -66,7 +66,7 @@ func NewF5LTMClient(d core.Device, lbnamespace, lbname string) (LBClient, error)
 	}
 
 	lbclient.d = d
-	err := refreshToken(&lbclient.f5CommonClient)
+	err := initF5Client(&lbclient.f5CommonClient)
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +100,7 @@ func (c *f5LTMClient) SetListers(lister core.StoreLister) {
 
 // DeleteLB...
 func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
-
+	var err error
 	if c.l7vs != nil {
 		newRule := c.generateL7Rule([]*v1beta1.Ingress{})
 		err = c.ensureIRule(newRule, c.l7vs.IRule)
@@ -159,11 +155,7 @@ func (c *f5LTMClient) DeleteLB(lb *lbapi.LoadBalancer) error {
 // EnsureLB...
 func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error {
 	//lb.Status.ProxyStatus.TCPConfigMap
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
-	_, err = c.f5.GetVirtualServer(c.l7vs.Name)
+	_, err := c.f5.GetVirtualServer(c.l7vs.Name)
 	if err != nil {
 		return err
 	}
@@ -186,10 +178,6 @@ func (c *f5LTMClient) EnsureLB(lb *lbapi.LoadBalancer, tcp *v1.ConfigMap) error 
 
 // DeleteIngresse...
 func (c *f5LTMClient) DeleteIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress, ings []*v1beta1.Ingress) error {
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
 	return c.EnsureIngress(lb, ing, ings)
 }
 
@@ -201,10 +189,6 @@ func (c *f5LTMClient) EnsureIngress(lb *lbapi.LoadBalancer, ing *v1beta1.Ingress
 		return nil
 	}
 
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
 	newRule := c.generateL7Rule(ings)
 	return c.ensureIRule(newRule, c.l7vs.IRule)
 }

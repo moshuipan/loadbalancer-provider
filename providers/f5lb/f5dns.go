@@ -1,13 +1,11 @@
 package f5lb
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strings"
-	"time"
 
 	gobigip "github.com/hanxueluo/go-bigip"
-
-	"encoding/base64"
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
 	log "k8s.io/klog"
@@ -23,33 +21,17 @@ type f5DNSClient struct {
 type f5CommonClient struct {
 	f5 *gobigip.BigIP
 	d  provider.Device
-	t  time.Time
 }
 
-func refreshToken(c *f5CommonClient) error {
-	var err error
-
-	n := time.Now()
-	// default timeout of f5 token is 1200s, but we will refresh it in ervery 1080s(18min)
-	if c.f5 == nil || time.Now().Add(time.Duration(-1080)*time.Second).After(c.t) {
-		defer func() {
-			if err != nil {
-				log.Errorf("Failed to refresh device %s token:%v", c.d.Name, err)
-			}
-		}()
-
+func initF5Client(c *f5CommonClient) error {
+	if c.f5 == nil {
 		bs, err := base64.StdEncoding.DecodeString(c.d.Auth.Password)
 		if err != nil {
 			return err
 		}
-
-		log.Infof("gobigip.NewTokenSession for %s device: %v", c.d.Name, n)
-		f5, err := gobigip.NewTokenSession(c.d.ManageAddr, c.d.Auth.User, string(bs), "", nil)
-		if err != nil {
-			return err
-		}
+		log.Infof("gobigip.NewSession for %s device", c.d.Name)
+		f5 := gobigip.NewSession(c.d.ManageAddr, c.d.Auth.User, string(bs), nil)
 		c.f5 = f5
-		c.t = n
 	}
 	return nil
 }
@@ -80,7 +62,7 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	}
 	lbclient.d = d
 
-	err := refreshToken(&lbclient.f5CommonClient)
+	err := initF5Client(&lbclient.f5CommonClient)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +137,7 @@ func (c *f5DNSClient) loadRuleHost(ruleName string) string {
 	return c.rule2Host[ruleName]
 }
 func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
-
+	var err error
 	oldHostName := c.loadRuleHost(dns.rules[0])
 
 	// handle hostName change
@@ -183,10 +161,7 @@ func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
 }
 
 func (c *f5DNSClient) DeleteIngress(dns *dnsInfo) error {
-	err := refreshToken(&c.f5CommonClient)
-	if err != nil {
-		return err
-	}
+	var err error
 	if dns.hostName != "" {
 		err = c.deleteHost(dns.hostName)
 		if err != nil {
