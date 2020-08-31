@@ -120,7 +120,7 @@ func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error 
 		}
 		if !found {
 			log.Warningf("Has orphan wip %v, try to delete it", wip)
-			_ = c.deleteHost(wip.Name)
+			_ = c.deleteHost(wip.Name, nil)
 		}
 	}
 	return nil
@@ -145,7 +145,7 @@ func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
 	// handle hostName change
 	if oldHostName != "" && oldHostName != dns.hostName {
 		log.Warningf("host name change")
-		err = c.deleteHost(oldHostName)
+		err = c.deleteHost(oldHostName, dns)
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
 func (c *f5DNSClient) DeleteIngress(dns *dnsInfo) error {
 	var err error
 	if dns.hostName != "" {
-		err = c.deleteHost(dns.hostName)
+		err = c.deleteHost(dns.hostName, dns)
 		if err != nil {
 			return err
 		}
@@ -216,7 +216,7 @@ func (c *f5DNSClient) ensurePool(name string, desc string) (*gobigip.GTMAPool, e
 	return obj, nil
 }
 
-func (c *f5DNSClient) deleteHost(hostName string) error {
+func (c *f5DNSClient) deleteHost(hostName string, d *dnsInfo) error {
 	wip, err := c.f5.GetGTMWideIP(hostName)
 	if err != nil {
 		log.Errorf("Failed to GetGTMWideIP %s when delete: %v ", hostName, err)
@@ -224,13 +224,15 @@ func (c *f5DNSClient) deleteHost(hostName string) error {
 	}
 
 	if wip != nil {
-		thisLB, _ := c.checkOwner(wip.Description)
+		thisLB, d0 := c.checkOwner(wip.Description)
 		if !thisLB {
-			log.Warningf("skip delete dns record because of conflict domain %s on f5", hostName)
+			log.Warningf("skip delete dns record %s because of conflict domain on f5", hostName)
 			return nil
 		}
-		//TODO
-		//d0.rules
+		if d != nil && d.l47 != d0.l47 {
+			log.Warningf("skip delete dns record %s because of unmatch l47: %s != %s", hostName, d.l47, d0.l47)
+			return nil
+		}
 	}
 
 	if wip != nil {

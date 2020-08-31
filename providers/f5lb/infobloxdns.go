@@ -150,7 +150,7 @@ func (c *infobloxDNSClient) EnsureIngress(dns *dnsInfo) error {
 	// handle hostName change
 	if oldHostName != "" && oldHostName != dns.hostName {
 		log.Warningf("host name change")
-		err = c.deleteHost(oldHostName)
+		err = c.deleteHost(oldHostName, dns)
 		if err != nil {
 			log.Warningf("Failed to delete old hostName %s:%v", oldHostName, err)
 		}
@@ -171,7 +171,7 @@ func (c *infobloxDNSClient) EnsureIngress(dns *dnsInfo) error {
 func (c *infobloxDNSClient) DeleteIngress(dns *dnsInfo) error {
 	var err error
 	if dns.hostName != "" {
-		err = c.deleteHost(dns.hostName)
+		err = c.deleteHost(dns.hostName, dns)
 		if err != nil {
 			return err
 		}
@@ -230,7 +230,7 @@ func (c *infobloxDNSClient) ensureHost(hostName string, d *dnsInfo) error {
 	return err
 }
 
-func (c *infobloxDNSClient) deleteHost(hostName string) error {
+func (c *infobloxDNSClient) deleteHost(hostName string, d *dnsInfo) error {
 	view, err := c.getActiveView()
 	if err != nil {
 		log.Errorf("Failed to get active view for %s, err:%v", hostName, err)
@@ -246,12 +246,15 @@ func (c *infobloxDNSClient) deleteHost(hostName string) error {
 	}
 
 	if rec != nil {
-		thisLB, _ := c.checkOwner(rec.Comment)
+		thisLB, d0 := c.checkOwner(rec.Comment)
 		if !thisLB {
-			log.Errorf("Failed to ensure host because of conflict domain name %s on f5", hostName)
+			log.Warningf("skip delete dns record %s because of conflict domain on f5", hostName)
 			return nil
 		}
-		//TODO
+		if d != nil && d.l47 != d0.l47 {
+			log.Warningf("skip delete dns record %s because of unmatch l47: %s != %s", hostName, d.l47, d0.l47)
+			return nil
+		}
 
 		log.Infof("ibclient.DeleteARecord view:%s, hostName:%s, ip:%s, ref:%s", view, hostName, rec.Ipv4Addr, rec.Ref)
 		_, err = c.client.DeleteARecord(ibclient.RecordA{Ref: rec.Ref})
@@ -330,7 +333,7 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 		}
 		if !found {
 			log.Warningf("Has orphan record %v, try to delete it", rec)
-			_ = c.deleteHost(rec.Name)
+			_ = c.deleteHost(rec.Name, nil)
 		}
 	}
 	return nil
