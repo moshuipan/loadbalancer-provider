@@ -430,9 +430,12 @@ func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) {
 		if err != nil {
 			log.Errorf("Failed to update L4 dns: %v", err)
 		}
-		err = p.ensureAllL7DNS()
-		if err != nil {
-			log.Errorf("Failed to update L7 dns: %v", err)
+		unEnsured := p.tcpCM == nil
+		if unEnsured { // Only ensure all L7 at first time
+			err = p.ensureAllL7DNS()
+			if err != nil {
+				log.Errorf("Failed to update L7 dns: %v", err)
+			}
 		}
 		return
 	}
