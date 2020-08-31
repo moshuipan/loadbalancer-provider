@@ -434,6 +434,7 @@ func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) {
 		if err != nil {
 			log.Errorf("Failed to update L7 dns: %v", err)
 		}
+		return
 	}
 
 	// clean All records
