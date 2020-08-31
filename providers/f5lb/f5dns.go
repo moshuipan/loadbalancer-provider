@@ -343,28 +343,36 @@ func (c *f5DNSClient) ensureHost(hostName string, d *dnsInfo) error {
 	pools := []gobigip.GTMWideIPPool{
 		{Name: poolName},
 	}
-	o := gobigip.GTMWideIP{
-		Name:        hostName,
-		Pools:       &pools,
-		Description: description,
-	}
 	if wip == nil {
+		o := gobigip.GTMWideIP{
+			Name:        hostName,
+			Pools:       &pools,
+			Description: description,
+		}
 		log.Infof("f5.AddGTMWideIP %s, %+v", hostName, pools)
 		err = c.f5.AddGTMWideIP(&o)
 		if err != nil {
 			log.Errorf("Failed to AddGTMWideIP %s: %v ", hostName, err)
-			return err
 		}
-	} else {
-		wip.Pools = &pools
-		wip.Description = description
-		log.Infof("f5.ModifyGTMWideIP %s, %+v", hostName, pools)
-		err = c.f5.ModifyGTMWideIP(hostName, wip)
-		if err != nil {
-			log.Errorf("Failed to ModifyGTMWideIP %s: %v ", hostName, err)
-			return err
-		}
+		return err
 	}
+
+	if (wip.Pools != nil && len(*wip.Pools) == 1 && (*wip.Pools)[0].Name == poolName) &&
+		wip.Description == description {
+		return nil
+	}
+
+	log.Infof("f5.ModifyGTMWideIP %s, desc:%s->%s, pool:%+v->%+v",
+		hostName, wip.Description, description, wip.Pools, pools)
+
+	wip.Pools = &pools
+	wip.Description = description
+	err = c.f5.ModifyGTMWideIP(hostName, wip)
+	if err != nil {
+		log.Errorf("Failed to ModifyGTMWideIP %s: %v ", hostName, err)
+		return err
+	}
+
 	return nil
 }
 

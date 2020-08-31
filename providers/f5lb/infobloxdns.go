@@ -207,7 +207,8 @@ func (c *infobloxDNSClient) ensureHost(hostName string, d *dnsInfo) error {
 			return nil
 		}
 
-		log.Infof("ibclient.UpdateARecord view:%s, hostName:%s, ip:%s->%s, comment: %s, ref:%s", view, hostName, rec.Ipv4Addr, d.Addr, comment, rec.Ref)
+		log.Infof("ibclient.UpdateARecord view:%s, hostName:%s, ip:%s->%s, comment:%s->%s, ref:%s",
+			view, hostName, rec.Ipv4Addr, d.Addr, rec.Comment, comment, rec.Ref)
 		_, err = c.client.UpdateARecord(ibclient.RecordA{Ref: rec.Ref, Ipv4Addr: d.Addr, Comment: comment})
 		if err != nil {
 			log.Errorf("Failed to udpate record %s, err:%v", hostName, err)
