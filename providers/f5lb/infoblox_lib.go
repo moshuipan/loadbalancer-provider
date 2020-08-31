@@ -1,6 +1,8 @@
 package f5lb
 
 import (
+	"fmt"
+
 	ibclient "github.com/infobloxopen/infoblox-go-client"
 )
 
@@ -46,8 +48,11 @@ func (c *infobloxDNSClient) getActiveView() (string, error) {
 			viewName = v.Name
 		}
 	}
+	if viewName == "" {
+		err = fmt.Errorf("no active view found")
+	}
 
-	return viewName, nil
+	return viewName, err
 }
 
 func (c *infobloxDNSClient) getZoneAuth(view, fqdn string) ([]ibclient.ZoneAuth, error) {
@@ -58,6 +63,10 @@ func (c *infobloxDNSClient) getZoneAuth(view, fqdn string) ([]ibclient.ZoneAuth,
 
 	zoneAuth := ibclient.NewZoneAuth(ibclient.ZoneAuth{View: view, Fqdn: fqdn})
 	err := c.connector.GetObject(zoneAuth, "", &res)
+
+	if err == nil && len(res) == 0 {
+		err = fmt.Errorf("zone %s not found", fqdn)
+	}
 
 	return res, err
 }
