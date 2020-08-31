@@ -226,11 +226,17 @@ func (c *f5LTMClient) generateL7Rule(ings []*v1beta1.Ingress) string {
 	// update irule content
 	poolName := c.getPoolName("l7")
 	newRule := "# written by lb " + c.namePrefix
-	newRule += "\nwhen HTTP_REQUEST {\n  switch [HTTP::host] {\n"
+	newRule += "\nwhen HTTP_REQUEST {\n"
+	if len(items) > 0 {
+		newRule += "  switch [HTTP::host] {\n"
+	}
 	for _, domain := range items {
 		newRule += fmt.Sprintf("    \"%s\" { pool %s }\n", domain, poolName)
 	}
-	newRule += "  }\n}"
+	if len(items) > 0 {
+		newRule += "  }\n"
+	}
+	newRule += "}"
 
 	/* // if-else
 	for i, domain := range domains {
@@ -277,12 +283,18 @@ func (c *f5LTMClient) generateL4Rule(l4rules map[string]string) string {
 	// update irule content
 	poolName := c.getPoolName("l4")
 	newRule := "# written by lb " + c.namePrefix
-	newRule += "\nwhen CLIENT_ACCEPTED {\n  switch [TCP::local_port] {\n"
+	newRule += "\nwhen CLIENT_ACCEPTED {\n"
+	if len(items) > 0 {
+		newRule += "  switch [TCP::local_port] {\n"
+	}
 	for _, port := range items {
 		newRule += fmt.Sprintf("    \"%s\" { pool %s }\n", port, poolName)
 	}
-	newRule += "    else { reject }\n"
-	newRule += "  }\n}"
+	if len(items) > 0 {
+		newRule += "    else { reject }\n"
+		newRule += "  }\n"
+	}
+	newRule += "}"
 
 	return newRule
 }
