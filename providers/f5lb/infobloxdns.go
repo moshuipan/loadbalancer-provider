@@ -290,13 +290,18 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 	log.Infof("EnsureDNSRecords %s dl: %v", l47, dnsInfos)
 
 	for _, d := range *dnsInfos {
+		if d.l47 != l47 {
+			log.Warningf("skip dnsinfo %+v for infodns, because l47 not match", d)
+			continue
+		}
 		if d.status == "" {
 			err = c.ensureHost(d.hostName, d)
 			if err != nil {
 				d.status = err.Error()
 				continue
 			} else {
-				d.status = "ok"
+				c.cacheRuleHost(d, d.hostName)
+				d.status = statusOK
 			}
 		}
 	}
@@ -319,7 +324,7 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 		for _, d := range *dnsInfos {
 			if d.hostName == rec.Name {
 				found = true
-				d.status = "ok"
+				d.status = statusOK
 				break
 			}
 		}

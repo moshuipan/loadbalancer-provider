@@ -57,7 +57,7 @@ gtm pool /Common/pool_all_3D {
 func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, error) {
 	lbclient := &f5DNSClient{
 		poolPrefix: d.Config.PoolPrefix,
-		lbname:     fmt.Sprintf("%s.%s", lbname, lbnamespace),
+		lbname:     fmt.Sprintf("%s.%s", lbnamespace, lbname),
 		rule2Host:  make(map[string]string),
 	}
 	lbclient.d = d
@@ -76,24 +76,26 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	return lbclient, nil
 }
 
-func (c *f5DNSClient) EnsureAllIngress(dnsInfos dnsInfoList) error {
-
-	// ensure all firstly
+func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
 	var err error
-	for _, d := range dnsInfos {
-		if d.l47 != "l7" {
-			log.Warningf("skip dnsinfo %+v for f5dns, because it's not l4", d)
+	log.Infof("EnsureDNSRecords %s dl: %v", l47, dnsInfos)
+	if l47 != "l7" {
+		return nil
+	}
+
+	for _, d := range *dnsInfos {
+		if d.l47 != l47 {
+			log.Warningf("skip dnsinfo %+v for f5dns, because l47 not match", d)
 			continue
 		}
 		if d.status == "" {
-			log.Warningf("Has unset dns %s, try to set it", d.hostName)
 			err = c.ensureHost(d.hostName, d)
 			if err != nil {
 				d.status = err.Error()
 				continue
 			} else {
 				c.cacheRuleHost(d, d.hostName)
-				d.status = "ok"
+				d.status = statusOK
 			}
 		}
 	}
@@ -105,19 +107,19 @@ func (c *f5DNSClient) EnsureAllIngress(dnsInfos dnsInfoList) error {
 	}
 	for _, wip := range wips.GTMWideIPs {
 		thisLB, dd := c.checkOwner(wip.Description)
-		if !thisLB || dd.l47 != "l7" {
+		if !thisLB || dd.l47 != l47 {
 			continue
 		}
 		found := false
-		for i := range dnsInfos {
-			if dnsInfos[i].hostName == wip.Name {
+		for _, d := range *dnsInfos {
+			if d.hostName == wip.Name {
 				found = true
-				dnsInfos[i].status = "ok"
+				d.status = statusOK
 				break
 			}
 		}
 		if !found {
-			log.Warningf("Has orphan wip %s, try to delete it", wip.Name)
+			log.Warningf("Has orphan wip %v, try to delete it", wip)
 			_ = c.deleteHost(wip.Name)
 		}
 	}
@@ -373,10 +375,5 @@ func (c *f5DNSClient) ensureHost(hostName string, d *dnsInfo) error {
 		return err
 	}
 
-	return nil
-}
-
-func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
-	//TODO
 	return nil
 }

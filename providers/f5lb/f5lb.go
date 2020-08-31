@@ -276,7 +276,7 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, tcpCM *
 			if err != nil {
 				return err
 			}
-			err = p.onUpdateLBDNS(o, tcpCM)
+			p.onUpdateLBDNS(o, tcpCM)
 		}
 
 		// cache new lb
@@ -291,7 +291,11 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, tcpCM *
 		}
 		var ingErr error
 		defer func() {
-			p.updateIngressStatus(ing.Namespace, ing.Name, ingErr)
+			msg := statusOK
+			if ingErr != nil {
+				msg = ingErr.Error()
+			}
+			p.updateIngressStatus(ing.Namespace, ing.Name, msg)
 		}()
 
 		ingErr = p.onUpdateIngress(o, lb)
@@ -328,7 +332,7 @@ func (p *Provider) isIngressNeedUpdate(event core.QueueObjectEvent, ing *v1beta1
 	return false
 }
 
-func (p *Provider) updateIngressStatus(namespace, name string, e error) {
+func (p *Provider) updateIngressStatus(namespace, name string, msg string) {
 	ing, err := p.clientset.ExtensionsV1beta1().Ingresses(namespace).Get(name, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -338,10 +342,7 @@ func (p *Provider) updateIngressStatus(namespace, name string, e error) {
 		return
 	}
 
-	statusMessge := statusOK
-	if e != nil {
-		statusMessge = e.Error()
-	}
+	statusMessge := msg
 
 	if ing.Annotations[ingressStatusMessage] == statusMessge && ing.Annotations[ingressProviderID] == p.startTime {
 		return
@@ -418,19 +419,21 @@ func (p *Provider) onUpdateIngress(o *core.QueueObject, lb *lbapi.LoadBalancer) 
 }
 
 // onUpdateLBDNS to all dns record by lb
-func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) error {
+func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) {
 	if o.Kind != core.QueueObjectLoadbalancer {
-		return nil
+		return
 	}
 
 	if p.phase != phaseDeleted {
-		err := p.updateL4DNS(tcpCM)
+		var err error
+		err = p.ensureAllL4DNS(tcpCM)
 		if err != nil {
 			log.Errorf("Failed to update L4 dns: %v", err)
 		}
-		//TODO handle error
-		//TODO resync all l7
-		return nil
+		err = p.ensureAllL7DNS()
+		if err != nil {
+			log.Errorf("Failed to update L7 dns: %v", err)
+		}
 	}
 
 	// clean All records
@@ -446,19 +449,6 @@ func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) error
 			log.Errorf("Failed to clean L7 dns: %v", err)
 		}
 	}
-
-	//TODO remove code
-	selector := labels.Set{lbapi.LabelKeyCreatedBy: fmt.Sprintf("%s.%s", p.loadBalancerNamespace, p.loadBalancerName)}.AsSelector()
-	ings, err := p.storeLister.Ingress.List(selector)
-	if err != nil {
-		log.Errorf("Failed to list ingress")
-		return err
-	}
-
-	for _, ing := range ings {
-		_ = p.updateOneIngressDNS(ing, false)
-	}
-	return nil
 }
 
 func (p *Provider) onUpdateIngressDNS(o *core.QueueObject) error {
@@ -481,7 +471,7 @@ func (p *Provider) updateOneIngressDNS(ing *v1beta1.Ingress, add bool) error {
 		return nil
 	}
 
-	ds, err := getIngressDNSRecord(ing)
+	ds, err := getOneIngressDNSRecord(ing)
 	if err != nil {
 		return err
 	}
@@ -583,16 +573,44 @@ func (p *Provider) updateLBStatus(namespace, name string, e error) {
 
 }
 
-// onUpdateLBDNS2 to delete all dns record by lb
-func (p *Provider) updateL4DNS(tcpCM *v1.ConfigMap) error {
+// ensureAllL4DNS to ensure all l4 dns record
+func (p *Provider) ensureAllL4DNS(tcpCM *v1.ConfigMap) error {
 	dnsInfos, err := getConfigMapDNSRecord(tcpCM)
 	if err != nil {
 		log.Errorf("Failed to parse L4 dns record")
 		return err
 	}
 
+	status := p.ensureAllDNS(&dnsInfos, "l4")
+
+	p.updateConfigMapStatus(tcpCM, status)
+
+	return nil
+}
+
+// ensureAllL7DNS to ensure all l7 dns record
+func (p *Provider) ensureAllL7DNS() error {
+	selector := labels.Set{lbapi.LabelKeyCreatedBy: fmt.Sprintf("%s.%s", p.loadBalancerNamespace, p.loadBalancerName)}.AsSelector()
+	ings, err := p.storeLister.Ingress.List(selector)
+	if err != nil {
+		log.Errorf("Failed to list ingress")
+		return err
+	}
+
+	dnsInfos := getIngressDNSRecord(ings)
+
+	status := p.ensureAllDNS(&dnsInfos, "l7")
+
+	for k, m := range status {
+		ss := strings.SplitN(k, ".", 2)
+		p.updateIngressStatus(ss[0], ss[1], m)
+	}
+	return nil
+}
+
+func (p *Provider) ensureAllDNS(dnsInfos *dnsInfoList, l47 string) map[string]string {
 	dlm := make(dnsInfoListMap)
-	for _, d := range dnsInfos {
+	for _, d := range *dnsInfos {
 		dl, ok := dlm[d.DNSName]
 		if !ok {
 			dl = &dnsInfoList{d}
@@ -623,8 +641,8 @@ func (p *Provider) updateL4DNS(tcpCM *v1.ConfigMap) error {
 		if !ok {
 			ds = &dnsInfoList{}
 		}
-		err = client.EnsureDNSRecords(ds, "l4")
-		s := "ok"
+		err = client.EnsureDNSRecords(ds, l47)
+		s := statusOK
 		if err != nil {
 			s = err.Error()
 		}
@@ -643,8 +661,5 @@ func (p *Provider) updateL4DNS(tcpCM *v1.ConfigMap) error {
 			}
 		}
 	}
-
-	p.updateConfigMapStatus(tcpCM, status)
-
-	return nil
+	return status
 }

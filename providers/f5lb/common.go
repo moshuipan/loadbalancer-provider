@@ -22,7 +22,7 @@ type dnsInfo struct {
 type dnsInfoList []*dnsInfo
 type dnsInfoListMap map[string]*dnsInfoList
 
-func getIngressDNSRecord(ing *v1beta1.Ingress) (dnsInfoList, error) {
+func getOneIngressDNSRecord(ing *v1beta1.Ingress) (dnsInfoList, error) {
 	var ds dnsInfoList
 	if len(ing.Spec.Rules) == 0 {
 		log.Warningf("Skip ing %s who has no rules", ing.Name)
@@ -48,11 +48,22 @@ func getIngressDNSRecord(ing *v1beta1.Ingress) (dnsInfoList, error) {
 			Record:   dns,
 			l47:      "l7",
 		}
-		d.rules = append(d.rules, fmt.Sprintf("%s.%s", ing.Name, ing.Namespace))
+		d.rules = append(d.rules, fmt.Sprintf("%s.%s", ing.Namespace, ing.Name))
 		ds = append(ds, d)
 	}
 
 	return ds, nil
+}
+func getIngressDNSRecord(ings []*v1beta1.Ingress) dnsInfoList {
+	var ds dnsInfoList
+	for _, ing := range ings {
+		ds0, _ := getOneIngressDNSRecord(ing)
+		if len(ds0) > 0 {
+			ds = append(ds, ds0...)
+		}
+	}
+
+	return ds
 }
 
 func getConfigMapDNSRecord(tcpCM *v1.ConfigMap) (dnsInfoList, error) {
