@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
-	ibclient "github.com/infobloxopen/infoblox-go-client"
+	ibclient "github.com/hanxueluo/infoblox-go-client"
 	log "k8s.io/klog"
 )
 
@@ -92,15 +92,6 @@ func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient
 	}
 
 	version := strings.TrimLeft(d.Config.APIVersion, "v")
-
-	// static assert for manual change in ./vendor.
-	// if you meet 'ModificationReminder undefined' error here, that means you may revert the code change in vendor.
-	// You should:
-	//  1. review pr #143 and make the change again
-	//  2. or, if infobloxopen/infoblox-go-client supports return an empty getBasicEA(), this assert code can be removed.
-	if ibclient.NewObjectManager(nil, "", "").ModificationReminder() != 0 {
-		log.Fatalf("no ea should be set, otherwise the CreateARecord will fail")
-	}
 
 	hostConfig := ibclient.HostConfig{
 		Host:     d.ManageAddr,

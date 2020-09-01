@@ -318,11 +318,19 @@
 
 [[projects]]
   branch = "release-11.x"
-  digest = "1:6f2129a9e4aeff65396c8ae0cbd14209e17b7368d1c0621af5bd8c4d690e99f0"
+  digest = "1:cd29d8c3a79eb060d26193c2343a4c1d97bf6574d903bb0b5233eefacfdfc56a"
   name = "github.com/hanxueluo/go-bigip"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "62295bcc82f6248f433c07cbe3c560b909f6d2e5"
+  revision = "f0398cd44d87b3c6c9e3ac067997764d02de7caa"
+
+[[projects]]
+  branch = "release/v2.0.0-cps"
+  digest = "1:9d32b555c49b12a140848466105761246e7fd15b7670f5d509b953a0149522b6"
+  name = "github.com/hanxueluo/infoblox-go-client"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "f62ef9c9b0c6bae4bc652474627e6f8a0f5c7fd2"
 
 [[projects]]
   digest = "1:9676627451831e0d8e347007d871eac494ce51d55b95a3fe1fac30ad8d717ab9"
@@ -342,14 +350,6 @@
   pruneopts = "NUT"
   revision = "1afb36080aec31e0d1528973ebe6721b191b0369"
   version = "v0.3.8"
-
-[[projects]]
-  branch = "release/v2.0.0"
-  digest = "1:2d6744f7625498382516c666a419f0a1b2446e432637ba174a3c42f8435aaa84"
-  name = "github.com/infobloxopen/infoblox-go-client"
-  packages = ["."]
-  pruneopts = "NUT"
-  revision = "a8464538b9cd3c109e73777041038d8d3275d674"
 
 [[projects]]
   digest = "1:88116f979a2f3ff8e6748a942ec37efd668ba2db062fc9a5e47f4dd2de339a38"
@@ -1045,7 +1045,7 @@
     "github.com/caicloud/clientset/util/syncqueue",
     "github.com/caicloud/go-common/kubernetes/client",
     "github.com/hanxueluo/go-bigip",
-    "github.com/infobloxopen/infoblox-go-client",
+    "github.com/hanxueluo/infoblox-go-client",
     "github.com/keybase/go-ps",
     "github.com/mdlayher/arp",
     "github.com/moby/moby/pkg/reexec",

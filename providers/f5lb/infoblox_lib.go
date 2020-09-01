@@ -3,7 +3,7 @@ package f5lb
 import (
 	"fmt"
 
-	ibclient "github.com/infobloxopen/infoblox-go-client"
+	ibclient "github.com/hanxueluo/infoblox-go-client"
 )
 
 type MyIBBase struct {

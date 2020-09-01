@@ -58,10 +58,6 @@ func NewObjectManager(connector IBConnector, cmpType string, tenantID string) *O
 	return objMgr
 }
 
-func (objMgr *ObjectManager) ModificationReminder() int {
-	return len(objMgr.getBasicEA(true))
-}
-
 func (objMgr *ObjectManager) getBasicEA(cloudAPIOwned Bool) EA {
 	ea := make(EA)
 	/* //
