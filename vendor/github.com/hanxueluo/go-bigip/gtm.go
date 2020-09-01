@@ -127,6 +127,7 @@ type GTMAPool struct {
 	Partition                 string `json:"partition,omitempty"`
 	FullPath                  string `json:"fullPath,omitempty"`
 	Generation                int    `json:"generation,omitempty"`
+	AlternateMode             string `json:"alternateMode,omitempty"`
 	AppService                string `json:"appService,omitempty"`
 	Description               string `json:"description,omitempty"`
 	Disabled                  bool   `json:"disabled,omitempty"`

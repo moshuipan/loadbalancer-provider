@@ -68,7 +68,7 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	}
 
 	log.Infof("Trying f5gtm list pool API call:%s, user:%s", d.ManageAddr, d.Auth.User)
-	_, err = lbclient.f5.GetGTMCNamePools()
+	_, err = lbclient.f5.GetGTMWideIPs()
 	if err != nil {
 		return nil, err
 	}
@@ -199,6 +199,7 @@ func (c *f5DNSClient) ensurePool(name string, desc string) (*gobigip.GTMAPool, e
 			Description:       desc,
 			Monitor:           "/Common/gateway_icmp",
 			LoadBalancingMode: "topology",
+			AlternateMode:     "none",
 			FallbackMode:      "global-availability",
 		}
 		log.Infof("f5.AddGTMAPool %v", config)
