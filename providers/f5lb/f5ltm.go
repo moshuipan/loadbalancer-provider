@@ -427,14 +427,17 @@ func (c *f5LTMClient) ensureNodeAndPool(l47 string, lb *lbapi.LoadBalancer) erro
 		newPoolMembers = append(newPoolMembers, *pm)
 	}
 
-	if foundCount != len(newPoolMembers) {
-		log.Infof("f5.UpdatePoolMembers ips: %v, found: %v, newPool: %v", ips, foundCount, newPoolMembers)
-		err = c.f5.UpdatePoolMembers(poolName, &newPoolMembers)
-		if err != nil {
-			log.Errorf("Failed to update pool member %s: %v", poolName, err)
-			return err
-		}
+	if len(poolMembers.PoolMembers) == len(newPoolMembers) &&
+		foundCount == len(poolMembers.PoolMembers) {
+		return nil
 	}
+
+	log.Infof("f5.UpdatePoolMembers ips: %v, found: %v, newPool: %v", ips, foundCount, newPoolMembers)
+	err = c.f5.UpdatePoolMembers(poolName, &newPoolMembers)
+	if err != nil {
+		log.Errorf("Failed to update pool member %s: %v", poolName, err)
+	}
+	return err
 
 	/* // not clean node
 	for k := range removed {
@@ -445,6 +448,4 @@ func (c *f5LTMClient) ensureNodeAndPool(l47 string, lb *lbapi.LoadBalancer) erro
 		}
 	}
 	*/
-
-	return nil
 }
