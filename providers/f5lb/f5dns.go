@@ -174,15 +174,24 @@ func (c *f5DNSClient) DeleteIngress(dns *dnsInfo) error {
 	return nil
 }
 
-func (c *f5DNSClient) getPoolName(hostName string) string {
-	// name rule:  xxx-yyy-zzz.domain.com -> ${prefix}_zzz_yyy_xxx
-	ns := strings.Split(hostName, ".")
-	name := ""
-	for _, s := range strings.Split(ns[0], "-") {
-		name = s + "_" + name
+func (c *f5DNSClient) getPoolName(hostName, suffix string) string {
+	// name rule:  suffix(-test) + host(xxx-yyy-test.domain.com) -> ${prefix}_test_xxx-yyy
+	if suffix == "-" {
+		suffix = ""
 	}
-	name = strings.TrimRight(name, "_")
-	return c.poolPrefix + "_" + name
+
+	middle := ""
+	subDomain := strings.Split(hostName, ".")[0]
+
+	if suffix != "" {
+		middle = "_" + suffix[1:]
+		subDomainPart := strings.TrimSuffix(subDomain, suffix)
+		if subDomainPart == subDomain {
+			log.Errorf("Invalid hostName '%s' which has no suffix '%s'", hostName, suffix)
+		}
+		subDomain = subDomainPart
+	}
+	return c.poolPrefix + middle + "_" + subDomain
 }
 
 func (c *f5DNSClient) ensurePool(name string, desc string) (*gobigip.GTMAPool, error) {
@@ -223,29 +232,34 @@ func (c *f5DNSClient) deleteHost(hostName string, d *dnsInfo) error {
 		log.Errorf("Failed to GetGTMWideIP %s when delete: %v ", hostName, err)
 		return err
 	}
-
-	if wip != nil {
-		thisLB, d0 := c.checkOwner(wip.Description)
-		if !thisLB {
-			log.Warningf("skip delete dns record %s because of conflict domain on f5", hostName)
-			return nil
-		}
-		if d != nil && d.l47 != d0.l47 {
-			log.Warningf("skip delete dns record %s because of unmatch l47: %s != %s", hostName, d.l47, d0.l47)
-			return nil
-		}
+	if wip == nil {
+		return nil
 	}
 
-	if wip != nil {
-		log.Infof("f5.DeleteGTMWideIP %s", hostName)
-		err = c.f5.DeleteGTMWideIP(hostName)
-		if err != nil {
-			log.Errorf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
-			return err
-		}
+	thisLB, d0 := c.checkOwner(wip.Description)
+	if !thisLB {
+		log.Warningf("skip delete dns record %s because of conflict domain on f5", hostName)
+		return nil
+	}
+	if d != nil && d.l47 != d0.l47 {
+		log.Warningf("skip delete dns record %s because of unmatch l47: %s != %s", hostName, d.l47, d0.l47)
+		return nil
 	}
 
-	poolName := c.getPoolName(hostName)
+	log.Infof("f5.DeleteGTMWideIP %s, pools:%v", hostName, wip.Pools)
+	err = c.f5.DeleteGTMWideIP(hostName)
+	if err != nil {
+		log.Errorf("Failed to DeleteGTMWideIP %s: %v ", hostName, err)
+		return err
+	}
+
+	if wip.Pools == nil || len(*wip.Pools) == 0 {
+		log.Warningf("skip delete wip %s pools because of empty pools", hostName)
+		return nil
+	}
+
+	poolName := (*wip.Pools)[0].Name
+
 	pool, err := c.f5.GetGTMAPool(poolName)
 	if err != nil {
 		log.Errorf("Failed to GetGTMAPool %s when delete: %v ", poolName, err)
@@ -284,7 +298,7 @@ func (c *f5DNSClient) ensureHost(hostName string, d *dnsInfo) error {
 		}
 	}
 
-	poolName := c.getPoolName(hostName)
+	poolName := c.getPoolName(hostName, d.SubDomainSuffix)
 	description := serializeMetadata(c.lbname, d)
 	// ensure pool
 	_, err = c.ensurePool(poolName, description)

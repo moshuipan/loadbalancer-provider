@@ -150,6 +150,8 @@ type DeviceConfig struct {
 	ForbiddenList string `json:"forbiddenList,omitempty"`
 	// ZoneList
 	ZoneList string `json:"zoneList,omitempty"`
+	// Environments
+	Environments map[string]string `json:"environments,omitempty"`
 
 	// Infoblox DNS
 	// APIVersion
@@ -187,6 +189,8 @@ type Record struct {
 	Addr string `json:"addr"` // vs or ip
 	// DNSName
 	DNSName string `json:"dnsName"` // deviceName
+	// SubDomainSuffix
+	SubDomainSuffix string `json:"subDomainSuffix"` // subDomainSuffix
 	// Zone
 	Zone string `json:"zone"`
 }
