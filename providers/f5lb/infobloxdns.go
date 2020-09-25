@@ -99,6 +99,8 @@ func newInfobloxClient(d provider.Device, lbnamespace, lbname string) (DNSClient
 		Username: d.Auth.User,
 		Password: string(bs),
 	}
+	// use self-define function to work with v2.2 infoblox-dns
+	ibclient.ValidateConnector = validateConnector
 	transportConfig := ibclient.NewTransportConfig("false", 20, 10)
 	requestBuilder := &ibclient.WapiRequestBuilder{}
 	requestor := &ibclient.WapiHttpRequestor{}

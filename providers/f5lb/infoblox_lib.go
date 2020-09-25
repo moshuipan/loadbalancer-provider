@@ -24,21 +24,27 @@ func (obj *MyIBBase) EaSearch() ibclient.EASearch {
 	return obj.eaSearch
 }
 
-func (c *infobloxDNSClient) getActiveView() (string, error) {
+// View ...
+type View struct {
+	MyIBBase `json:"-"`
+	Ref      string `json:"_ref,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Disable  bool   `json:"disable,omitempty"`
+}
 
-	type View struct {
-		MyIBBase `json:"-"`
-		Ref      string `json:"_ref,omitempty"`
-		Name     string `json:"name,omitempty"`
-		Disable  bool   `json:"disable,omitempty"`
-	}
+func listViews(conn *ibclient.Connector) ([]View, error) {
+	var res []View
+
 	req := View{}
 	req.objectType = "view"
 	req.returnFields = []string{"name", "disable"}
 
-	var res []View
+	err := conn.GetObject(&req, "", &res)
+	return res, err
+}
 
-	err := c.connector.GetObject(&req, "", &res)
+func (c *infobloxDNSClient) getActiveView() (string, error) {
+	res, err := listViews(c.connector)
 	if err != nil {
 		return "", err
 	}
@@ -69,4 +75,9 @@ func (c *infobloxDNSClient) getZoneAuth(view, fqdn string) ([]ibclient.ZoneAuth,
 	}
 
 	return res, err
+}
+
+func validateConnector(conn *ibclient.Connector) error {
+	_, err := listViews(conn)
+	return err
 }
