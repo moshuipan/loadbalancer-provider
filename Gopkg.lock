@@ -326,11 +326,11 @@
 
 [[projects]]
   branch = "release/v2.0.0-cps"
-  digest = "1:9d32b555c49b12a140848466105761246e7fd15b7670f5d509b953a0149522b6"
+  digest = "1:e76c95b0ed76c2a559a224f5e2f283373382670eac5093f7622a6111c1cbcc43"
   name = "github.com/hanxueluo/infoblox-go-client"
   packages = ["."]
   pruneopts = "NUT"
-  revision = "f62ef9c9b0c6bae4bc652474627e6f8a0f5c7fd2"
+  revision = "c868c452f29a321aa89c8e999f2ded70ae5fbfaf"
 
 [[projects]]
   digest = "1:9676627451831e0d8e347007d871eac494ce51d55b95a3fe1fac30ad8d717ab9"
