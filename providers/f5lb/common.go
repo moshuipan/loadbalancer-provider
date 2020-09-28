@@ -3,6 +3,7 @@ package f5lb
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/caicloud/loadbalancer-provider/core/provider"
@@ -66,20 +67,35 @@ func getIngressDNSRecord(ings []*v1beta1.Ingress) dnsInfoList {
 	return ds
 }
 
-func getConfigMapDNSRecord(tcpCM *v1.ConfigMap) (dnsInfoList, error) {
-	var ds dnsInfoList
+func getDNSRecord(tcpCM *v1.ConfigMap) (map[string][]provider.Record, error) {
+	result := make(map[string][]provider.Record)
+	if tcpCM == nil {
+		return result, nil
+	}
 	s := tcpCM.Annotations[ingressDNSInfoKey]
 	if s == "" {
-		return ds, nil
+		return result, nil
 	}
 
 	dnsRecords := make(map[string][]provider.Record)
 	if err := json.Unmarshal([]byte(s), &dnsRecords); err != nil {
 		log.Errorf("Failed to Unmarshal dnsInfo: %s", s)
-		return ds, err
+		return result, err
 	}
 
 	for k := range tcpCM.Data {
+		drs, ok := dnsRecords[k]
+		if !ok || len(drs) == 0 {
+			continue
+		}
+		result[k] = dnsRecords[k]
+	}
+	return result, nil
+}
+
+func getDNSInfoList(dnsRecords map[string][]provider.Record) dnsInfoList {
+	var ds dnsInfoList
+	for k := range dnsRecords {
 		drs, ok := dnsRecords[k]
 		if !ok || len(drs) == 0 {
 			continue
@@ -93,8 +109,31 @@ func getConfigMapDNSRecord(tcpCM *v1.ConfigMap) (dnsInfoList, error) {
 		d.rules = append(d.rules, k)
 		ds = append(ds, d)
 	}
+	return ds
+}
 
-	return ds, nil
+func getConfigMapDNSRecordChange(oldCM, newCM *v1.ConfigMap) (dnsInfoList, dnsInfoList, error) {
+	old, err1 := getDNSRecord(oldCM)
+	if err1 != nil {
+		log.Warningf("Failed to get old dns record: %v", err1)
+	}
+	new, err2 := getDNSRecord(newCM)
+	if err2 != nil {
+		log.Errorf("Failed to get new dns record: %s", err2)
+		return nil, nil, err2
+	}
+
+	for k, v := range new {
+		oldV, ok := old[k]
+		if ok {
+			if reflect.DeepEqual(v, oldV) {
+				delete(old, k)
+			}
+		}
+	}
+	oldds := getDNSInfoList(old)
+	newds := getDNSInfoList(new)
+	return oldds, newds, nil
 }
 
 /*

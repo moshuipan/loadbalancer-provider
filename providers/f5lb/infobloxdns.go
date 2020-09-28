@@ -143,7 +143,7 @@ func (c *infobloxDNSClient) EnsureIngress(dns *dnsInfo) error {
 	// handle hostName change
 	if oldHostName != "" && oldHostName != dns.hostName {
 		log.Warningf("host name change")
-		err = c.deleteHost(oldHostName, dns)
+		err = c.deleteHost("", oldHostName, dns)
 		if err != nil {
 			log.Warningf("Failed to delete old hostName %s:%v", oldHostName, err)
 		}
@@ -164,7 +164,7 @@ func (c *infobloxDNSClient) EnsureIngress(dns *dnsInfo) error {
 func (c *infobloxDNSClient) DeleteIngress(dns *dnsInfo) error {
 	var err error
 	if dns.hostName != "" {
-		err = c.deleteHost(dns.hostName, dns)
+		err = c.deleteHost("", dns.hostName, dns)
 		if err != nil {
 			return err
 		}
@@ -223,12 +223,16 @@ func (c *infobloxDNSClient) ensureHost(hostName string, d *dnsInfo) error {
 	return err
 }
 
-func (c *infobloxDNSClient) deleteHost(hostName string, d *dnsInfo) error {
-	view, err := c.getActiveView()
-	if err != nil {
-		log.Errorf("Failed to get active view for %s, err:%v", hostName, err)
-		return err
+func (c *infobloxDNSClient) deleteHost(view, hostName string, d *dnsInfo) error {
+	var err error
+	if view == "" {
+		view, err = c.getActiveView()
+		if err != nil {
+			log.Errorf("Failed to get active view for %s, err:%v", hostName, err)
+			return err
+		}
 	}
+
 	rec, err := c.getRecord(hostName, view)
 	if err != nil {
 		log.Warningf("Failed to get record %s in view %s to delete: %v", hostName, view, err)
@@ -281,11 +285,24 @@ func (c *infobloxDNSClient) getRecord(hostName, view string) (*ibclient.RecordA,
 	return nil, fmt.Errorf("Too Many records for %s: num=%v", hostName, len(*recs))
 }
 
-func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
+func (c *infobloxDNSClient) EnsureDNSRecords(addList, deleteList *dnsInfoList, l47 string, syncAll bool) error {
 	var err error
-	log.Infof("EnsureDNSRecords %s dl: %v", l47, dnsInfos)
+	log.Infof("EnsureDNSRecords %s dl, update:%v, delete:%v", l47, addList, deleteList)
 
-	for _, d := range *dnsInfos {
+	view, err := c.getActiveView()
+	if err != nil {
+		log.Errorf("Failed to get active view for err:%v", err)
+		return err
+	}
+
+	if deleteList != nil {
+		for _, d := range *deleteList {
+			_ = c.deleteHost(view, d.hostName, d)
+			c.cacheRuleHost(d, "")
+		}
+	}
+
+	for _, d := range *addList {
 		if d.l47 != l47 {
 			log.Warningf("skip dnsinfo %+v for infodns, because l47 not match", d)
 			continue
@@ -302,11 +319,10 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 		}
 	}
 
-	view, err := c.getActiveView()
-	if err != nil {
-		log.Errorf("Failed to get active view for err:%v", err)
-		return err
+	if !syncAll {
+		return nil
 	}
+
 	recs, err := c.client.GetARecord(ibclient.RecordA{View: view})
 	if err != nil {
 		return err
@@ -317,7 +333,7 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 			continue
 		}
 		found := false
-		for _, dd := range *dnsInfos {
+		for _, dd := range *addList {
 			if dd.hostName == rec.Name {
 				found = true
 				dd.status = statusOK
@@ -326,7 +342,7 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 		}
 		if !found {
 			log.Warningf("Has orphan record %v, try to delete it", rec)
-			_ = c.deleteHost(rec.Name, nil)
+			_ = c.deleteHost(view, rec.Name, nil)
 			c.cacheRuleHost(d, "")
 		}
 	}

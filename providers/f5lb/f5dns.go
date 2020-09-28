@@ -76,14 +76,21 @@ func newF5DNSClient(d provider.Device, lbnamespace, lbname string) (DNSClient, e
 	return lbclient, nil
 }
 
-func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error {
+func (c *f5DNSClient) EnsureDNSRecords(addList, deleteList *dnsInfoList, l47 string, syncAll bool) error {
 	var err error
-	log.Infof("EnsureDNSRecords %s dl: %v", l47, dnsInfos)
+	log.Infof("EnsureDNSRecords %s dl, update:%v, delete:%v", l47, addList, deleteList)
 	if l47 != "l7" {
 		return nil
 	}
 
-	for _, d := range *dnsInfos {
+	if deleteList != nil {
+		for _, d := range *deleteList {
+			_ = c.deleteHost(d.hostName, d)
+			c.cacheRuleHost(d, "")
+		}
+	}
+
+	for _, d := range *addList {
 		if d.l47 != l47 {
 			log.Warningf("skip dnsinfo %+v for f5dns, because l47 not match", d)
 			continue
@@ -100,6 +107,10 @@ func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error 
 		}
 	}
 
+	if !syncAll {
+		return nil
+	}
+
 	// delete all orphan hostName
 	wips, err := c.f5.GetGTMWideIPs()
 	if err != nil || wips == nil {
@@ -111,7 +122,7 @@ func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error 
 			continue
 		}
 		found := false
-		for _, dd := range *dnsInfos {
+		for _, dd := range *addList {
 			if dd.hostName == wip.Name {
 				found = true
 				dd.status = statusOK

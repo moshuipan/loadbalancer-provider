@@ -76,7 +76,7 @@ type LBClient interface {
 
 // DNSClient ...
 type DNSClient interface {
-	EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error
+	EnsureDNSRecords(addList, deleteList *dnsInfoList, l47 string, syncAll bool) error
 	EnsureIngress(dns *dnsInfo) error
 	DeleteIngress(dns *dnsInfo) error
 }
@@ -271,6 +271,8 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, tcpCM *
 	}
 
 	if o.Kind == core.QueueObjectLoadbalancer {
+		lb = lb.DeepCopy()
+		tcpCM = tcpCM.DeepCopy()
 		if p.isLBNeedUpdate(lb) || p.isConfigMapUpdate(tcpCM) {
 			err = p.onUpdateLB(o.Event, lb, tcpCM)
 			if err != nil {
@@ -280,8 +282,8 @@ func (p *Provider) OnUpdate(o *core.QueueObject, lb *lbapi.LoadBalancer, tcpCM *
 		}
 
 		// cache new lb
-		p.lb = lb.DeepCopy()
-		p.tcpCM = tcpCM.DeepCopy()
+		p.lb = lb
+		p.tcpCM = tcpCM
 	}
 
 	if o.Kind == core.QueueObjectIngress {
@@ -424,15 +426,15 @@ func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) {
 		return
 	}
 
+	var err error
 	if p.phase != phaseDeleted {
-		var err error
 		err = p.ensureAllL4DNS(tcpCM)
 		if err != nil {
 			log.Errorf("Failed to update L4 dns: %v", err)
 		}
 		unEnsured := p.tcpCM == nil
 		if unEnsured { // Only ensure all L7 at first time
-			err = p.ensureAllL7DNS()
+			err = p.ensureAllL7DNS(true)
 			if err != nil {
 				log.Errorf("Failed to update L7 dns: %v", err)
 			}
@@ -440,18 +442,13 @@ func (p *Provider) onUpdateLBDNS(o *core.QueueObject, tcpCM *v1.ConfigMap) {
 		return
 	}
 
-	// clean All records
-	for _, d := range p.dnsClients {
-		var err error
-		ds := dnsInfoList{}
-		err = d.EnsureDNSRecords(&ds, "l4")
-		if err != nil {
-			log.Errorf("Failed to clean L4 dns: %v", err)
-		}
-		err = d.EnsureDNSRecords(&ds, "l7")
-		if err != nil {
-			log.Errorf("Failed to clean L7 dns: %v", err)
-		}
+	err = p.ensureAllL4DNS(nil)
+	if err != nil {
+		log.Errorf("Failed to clean L4 dns: %v", err)
+	}
+	err = p.ensureAllL7DNS(false)
+	if err != nil {
+		log.Errorf("Failed to clean L7 dns: %v", err)
 	}
 }
 
@@ -577,23 +574,25 @@ func (p *Provider) updateLBStatus(namespace, name string, e error) {
 
 }
 
-// ensureAllL4DNS to ensure all l4 dns record
 func (p *Provider) ensureAllL4DNS(tcpCM *v1.ConfigMap) error {
-	dnsInfos, err := getConfigMapDNSRecord(tcpCM)
+	old, new, err := getConfigMapDNSRecordChange(p.tcpCM, tcpCM)
 	if err != nil {
 		log.Errorf("Failed to parse L4 dns record")
 		return err
 	}
 
-	status := p.ensureAllDNS(&dnsInfos, "l4")
+	_ = p.ensureAllDNS(&old, "l4", false)
+	status := p.ensureAllDNS(&new, "l4", true)
 
-	p.updateConfigMapStatus(tcpCM, status)
+	if tcpCM != nil {
+		p.updateConfigMapStatus(tcpCM, status)
+	}
 
 	return nil
 }
 
 // ensureAllL7DNS to ensure all l7 dns record
-func (p *Provider) ensureAllL7DNS() error {
+func (p *Provider) ensureAllL7DNS(add bool) error {
 	selector := labels.Set{lbapi.LabelKeyCreatedBy: fmt.Sprintf("%s.%s", p.loadBalancerNamespace, p.loadBalancerName)}.AsSelector()
 	ings, err := p.storeLister.Ingress.List(selector)
 	if err != nil {
@@ -603,16 +602,18 @@ func (p *Provider) ensureAllL7DNS() error {
 
 	dnsInfos := getIngressDNSRecord(ings)
 
-	status := p.ensureAllDNS(&dnsInfos, "l7")
+	status := p.ensureAllDNS(&dnsInfos, "l7", add)
 
-	for k, m := range status {
-		ss := strings.SplitN(k, ".", 2)
-		p.updateIngressStatus(ss[0], ss[1], m)
+	if add {
+		for k, m := range status {
+			ss := strings.SplitN(k, ".", 2)
+			p.updateIngressStatus(ss[0], ss[1], m)
+		}
 	}
 	return nil
 }
 
-func (p *Provider) ensureAllDNS(dnsInfos *dnsInfoList, l47 string) map[string]string {
+func (p *Provider) ensureAllDNS(dnsInfos *dnsInfoList, l47 string, add bool) map[string]string {
 	dlm := make(dnsInfoListMap)
 	for _, d := range *dnsInfos {
 		dl, ok := dlm[d.DNSName]
@@ -645,7 +646,16 @@ func (p *Provider) ensureAllDNS(dnsInfos *dnsInfoList, l47 string) map[string]st
 		if !ok {
 			ds = &dnsInfoList{}
 		}
-		err = client.EnsureDNSRecords(ds, l47)
+		addList := &dnsInfoList{}
+		deleteList := &dnsInfoList{}
+
+		if add {
+			addList = ds
+		} else {
+			deleteList = ds
+		}
+
+		err = client.EnsureDNSRecords(addList, deleteList, l47, false)
 		s := statusOK
 		if err != nil {
 			s = err.Error()
