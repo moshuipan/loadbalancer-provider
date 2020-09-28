@@ -317,16 +317,17 @@ func (c *infobloxDNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) 
 			continue
 		}
 		found := false
-		for _, d := range *dnsInfos {
-			if d.hostName == rec.Name {
+		for _, dd := range *dnsInfos {
+			if dd.hostName == rec.Name {
 				found = true
-				d.status = statusOK
+				dd.status = statusOK
 				break
 			}
 		}
 		if !found {
 			log.Warningf("Has orphan record %v, try to delete it", rec)
 			_ = c.deleteHost(rec.Name, nil)
+			c.cacheRuleHost(d, "")
 		}
 	}
 	return nil

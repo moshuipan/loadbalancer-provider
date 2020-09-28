@@ -106,21 +106,22 @@ func (c *f5DNSClient) EnsureDNSRecords(dnsInfos *dnsInfoList, l47 string) error 
 		return err
 	}
 	for _, wip := range wips.GTMWideIPs {
-		thisLB, dd := c.checkOwner(wip.Description)
-		if !thisLB || dd.l47 != l47 {
+		thisLB, d := c.checkOwner(wip.Description)
+		if !thisLB || d.l47 != l47 {
 			continue
 		}
 		found := false
-		for _, d := range *dnsInfos {
-			if d.hostName == wip.Name {
+		for _, dd := range *dnsInfos {
+			if dd.hostName == wip.Name {
 				found = true
-				d.status = statusOK
+				dd.status = statusOK
 				break
 			}
 		}
 		if !found {
 			log.Warningf("Has orphan wip %v, try to delete it", wip)
 			_ = c.deleteHost(wip.Name, nil)
+			c.cacheRuleHost(d, "")
 		}
 	}
 	return nil
@@ -149,6 +150,7 @@ func (c *f5DNSClient) EnsureIngress(dns *dnsInfo) error {
 		if err != nil {
 			return err
 		}
+		c.cacheRuleHost(dns, "")
 	}
 
 	if dns.hostName != "" {
